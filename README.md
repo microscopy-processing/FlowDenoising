@@ -10,4 +10,4 @@ Example:
     empiar10311_crop.mrc
     filtered_empiar10311_crop.mrc
     
-In the [manual](https://github.com/ microscopy-processing/FlowDenoising/blob/main/manual/manual.ipynb) you will find more information.
+In the [manual](https://github.com/microscopy-processing/FlowDenoising/blob/main/manual/manual.ipynb) you will find more information.
