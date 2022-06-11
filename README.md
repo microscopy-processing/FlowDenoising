@@ -1,6 +1,6 @@
-# FlowDenoising (Optical flow - driven volumetric (3D) Gaussian denoising)
+# FlowDenoising: (Optical Flow)-driven volumetric (3D) Gaussian denoising)
 
-FlowDenoising inputs a volume (currently MRC and TIFF files are accepted), low-pass filters the volume, and outputs a volume (a MRC file or a sequence of TIFF files).
+FlowDenoising inputs a data volume (currently MRC and TIFF files are accepted), low-pass filters the data using a Gaussian kernel, and outputs the filtered volume (a MRC file or a sequence of TIFF files).
 
 Example:
 
