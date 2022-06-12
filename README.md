@@ -4,6 +4,6 @@ FlowDenoising is a Python3 module that inputs a data volume (currently [MRC](htt
 
 Example of use:
 
-    > python flowdenoising.py --input empiar10311_crop.mrc --output filtered_empiar10311_crop.mrc
+    > python flowdenoising.py --input stack.mrc --output filtered_stack.mrc
     
 Please, read the [manual](https://github.com/microscopy-processing/FlowDenoising/blob/main/manual/manual.ipynb) for getting more information.
