@@ -270,11 +270,10 @@ if __name__ == "__main__":
 
     MRC_input = ( args.input.split('.')[1] == "MRC" or args.input.split('.')[1] == "mrc" )
     if MRC_input:
-        stack_MRC = mrcfile.open(MRC_file)
+        stack_MRC = mrcfile.open(args.input)
         stack = stack_MRC.data
     else:
-        TIFF_file = args.input
-        stack = skimage.io.imread(TIFF_file, plugin="tifffile").astype(np.float32)
+        stack = skimage.io.imread(args.input, plugin="tifffile").astype(np.float32)
 
     if __debug__:
         time_1 = time.process_time()
@@ -289,7 +288,7 @@ if __name__ == "__main__":
     if args.no_OF:
         filtered_stack = no_OF_filter(stack, kernel)
     else:
-        filtered_stack = filter(stack, kernel, l, w)
+        filtered_stack = OF_filter(stack, kernel, l, w)
 
     logging.info(f"{args.output} type = {filtered_stack.dtype}")
     logging.info(f"{args.output} max = {filtered_stack.max()}")
