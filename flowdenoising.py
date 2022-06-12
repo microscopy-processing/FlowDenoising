@@ -8,7 +8,6 @@
 
 import logging
 import os
-LOGGING_FORMAT = "[%(asctime)s] (%(levelname)s) %(message)s"
 import numpy as np
 import cv2
 import scipy.ndimage
@@ -17,6 +16,9 @@ import imageio
 import tifffile
 import skimage.io
 import mrcfile
+import argparse
+
+LOGGING_FORMAT = "[%(asctime)s] (%(levelname)s) %(message)s"
 
 def get_gaussian_kernel(sigma=1):
     logging.info(f"Computing gaussian kernel with sigma={sigma}")
@@ -63,7 +65,7 @@ def get_flow(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIDE):
         logging.debug(f"OF computed in {time_1 - time_0} seconds")
     return flow
 
-def filter_along_Z(stack, kernel, l, w):
+def OF_filter_along_Z(stack, kernel, l, w):
     logging.info(f"Filtering along Z with l={l} and w={w}")
     if __debug__:
         time_0 = time.process_time()
@@ -83,14 +85,32 @@ def filter_along_Z(stack, kernel, l, w):
                 tmp_slice += stack[z, :, :] * kernel[i]
         filtered_stack[z, :, :] = tmp_slice
         logging.info(f"Filtering along Z {int(100*(z/Z_dim))}%")
-        #print(z, end=' ', flush=True)
-    #print()
     if __debug__:
         time_1 = time.process_time()
         logging.debug(f"Filtering along Z spent {time_1 - time_0} seconds")
     return filtered_stack
 
-def filter_along_Y(stack, kernel, l, w):
+def no_OF_filter_along_Z(stack, kernel):
+    logging.info(f"Filtering along Z with l={l} and w={w}")
+    if __debug__:
+        time_0 = time.process_time()
+    filtered_stack = np.zeros_like(stack).astype(np.float32)
+    shape_of_stack = np.shape(stack)
+    padded_stack = np.zeros(shape=(shape_of_stack[0] + kernel.size, shape_of_stack[1], shape_of_stack[2]))
+    padded_stack[kernel.size//2:shape_of_stack[0] + kernel.size//2, ...] = stack
+    Z_dim = stack.shape[0]
+    for z in range(Z_dim):
+        tmp_slice = np.zeros_like(stack[z, :, :]).astype(np.float32)
+        for i in range(kernel.size):
+            tmp_slice += padded_stack[z + i, :, :] * kernel[i]
+        filtered_stack[z, :, :] = tmp_slice
+        logging.info(f"Filtering along Z {int(100*(z/Z_dim))}%")
+    if __debug__:
+        time_1 = time.process_time()
+        logging.debug(f"Filtering along Z spent {time_1 - time_0} seconds")
+    return filtered_stack
+
+def OF_filter_along_Y(stack, kernel, l, w):
     logging.info(f"Filtering along Y with l={l} and w={w}")
     if __debug__:
         time_0 = time.process_time()
@@ -113,11 +133,29 @@ def filter_along_Y(stack, kernel, l, w):
     if __debug__:
         time_1 = time.process_time()
         logging.debug(f"Filtering along Y spent {time_1 - time_0} seconds")
-        #print(y, end=' ', flush=True)
-    #print()
     return filtered_stack
 
-def filter_along_X(stack, kernel, l, w):
+def no_OF_filter_along_Y(stack, kernel):
+    logging.info(f"Filtering along Y with l={l} and w={w}")
+    if __debug__:
+        time_0 = time.process_time()
+    filtered_stack = np.zeros_like(stack).astype(np.float32)
+    shape_of_stack = np.shape(stack)
+    padded_stack = np.zeros(shape=(shape_of_stack[0], shape_of_stack[1] + kernel.size, shape_of_stack[2]))
+    padded_stack[:, kernel.size//2:shape_of_stack[1] + kernel.size//2, :] = stack
+    Y_dim = stack.shape[1]
+    for y in range(Y_dim):
+        tmp_slice = np.zeros_like(stack[:, y, :]).astype(np.float32)
+        for i in range(kernel.size):
+            tmp_slice += padded_stack[:, y + i, :] * kernel[i]
+        filtered_stack[:, y, :] = tmp_slice
+        logging.info(f"Filtering along Y {int(100*(y/Y_dim))}%")
+    if __debug__:
+        time_1 = time.process_time()
+        logging.debug(f"Filtering along Y spent {time_1 - time_0} seconds")
+    return filtered_stack
+
+def OF_filter_along_X(stack, kernel, l, w):
     logging.info(f"Filtering along X with l={l} and w={w}")
     if __debug__:
         time_0 = time.process_time()
@@ -140,35 +178,39 @@ def filter_along_X(stack, kernel, l, w):
     if __debug__:
         time_1 = time.process_time()
         logging.debug(f"Filtering along X spent {time_1 - time_0} seconds")
-        #print(x, end=' ', flush=True)
-    #print()
     return filtered_stack
 
-def filter(stack, kernel, l, w):
-    filtered_stack_Z = filter_along_Z(stack, kernel, l, w)
-    filtered_stack_ZY = filter_along_Y(filtered_stack_Z, kernel, l, w)
-    filtered_stack_ZYX = filter_along_X(filtered_stack_ZY, kernel, l, w)
+def no_OF_filter_along_X(stack, kernel):
+    logging.info(f"Filtering along X with l={l} and w={w}")
+    if __debug__:
+        time_0 = time.process_time()
+    filtered_stack = np.zeros_like(stack).astype(np.float32)
+    shape_of_stack = np.shape(stack)
+    padded_stack = np.zeros(shape=(shape_of_stack[0], shape_of_stack[1], shape_of_stack[2] + kernel.size))
+    padded_stack[:, :, kernel.size//2:shape_of_stack[2] + kernel.size//2] = stack
+    X_dim = stack.shape[2]
+    for x in range(X_dim):
+        tmp_slice = np.zeros_like(stack[:, :, x]).astype(np.float32)
+        for i in range(kernel.size):
+            tmp_slice += padded_stack[:, :, x + i] * kernel[i]
+        filtered_stack[:, :, x] = tmp_slice
+        logging.info(f"Filtering along X {int(100*(x/X_dim))}%")
+    if __debug__:
+        time_1 = time.process_time()
+        logging.debug(f"Filtering along X spent {time_1 - time_0} seconds")
+    return filtered_stack
+
+def OF_filter(stack, kernel, l, w):
+    filtered_stack_Z = OF_filter_along_Z(stack, kernel, l, w)
+    filtered_stack_ZY = OF_filter_along_Y(filtered_stack_Z, kernel, l, w)
+    filtered_stack_ZYX = OF_filter_along_X(filtered_stack_ZY, kernel, l, w)
     return filtered_stack_ZYX
 
-def read_image(filename:str) -> np.ndarray:
-    image = cv2.imread(filename, cv2.IMREAD_UNCHANGED)
-    return image
-
-def write_image(filename:str, image: np.ndarray) -> None:
-    cv2.imwrite(filename, image)
-
-N_DIGITS = 3
-EXTENSION_LENGTH = 3
-def compose_filename(images, index):
-    prefix = images.split('%')[0]
-    enumeration_digits = \
-        images.split('%')[1][-(N_DIGITS + EXTENSION_LENGTH + 1):]\
-        [0:N_DIGITS]
-    extension = images[-N_DIGITS:]
-    filename = f"{prefix}{index:{enumeration_digits}}.{extension}"
-    return filename
-
-import argparse
+def no_OF_filter(stack, kernel):
+    filtered_stack_Z = no_OF_filter_along_Z(stack, kernel)
+    filtered_stack_ZY = no_OF_filter_along_Y(filtered_stack_Z, kernel)
+    filtered_stack_ZYX = no_OF_filter_along_X(filtered_stack_ZY, kernel)
+    return filtered_stack_ZYX
 
 def int_or_str(text):
     '''Helper function for argument parsing.'''
@@ -200,16 +242,22 @@ parser.add_argument("-l", "--levels", type=int_or_str,
 parser.add_argument("-w", "--winside", type=int_or_str,
                     help="Side of the window used by the optical flow estimator",
                     default=OF_WINDOW_SIDE)
-parser.add_argument("-v", "--verbose", action='store_true',
-                    help="Increase the verbosity")
+parser.add_argument("-v", "--verbosity", type=int_or_str,
+                    help="Verbosity level", default=0)
+parser.add_argument("-n", "--no_OF", action="store_true", help="Disable Optical Flow compensation")
 
 if __name__ == "__main__":
     parser.description = __doc__
     args = parser.parse_known_args()[0]
-    if args.verbose:
+    if args.verbosity == 2:
         logging.basicConfig(format=LOGGING_FORMAT, level=logging.DEBUG)
-    else:
+        logging.info("Verbosity level = 2")
+    elif args.verbosity == 1:
         logging.basicConfig(format=LOGGING_FORMAT, level=logging.INFO)
+        logging.info("Verbosity level = 1")        
+    else:
+        logging.basicConfig(format=LOGGING_FORMAT, level=logging.CRITICAL)
+
     sigma = args.sigma
     l = args.levels
     w = args.winside
@@ -217,6 +265,8 @@ if __name__ == "__main__":
     if __debug__:
         logging.info(f"reading \"{args.input}\"")
         time_0 = time.process_time()
+
+    logging.debug(f"input = {args.input}")
 
     MRC_input = ( args.input.split('.')[1] == "MRC" or args.input.split('.')[1] == "mrc" )
     if MRC_input:
@@ -236,7 +286,10 @@ if __name__ == "__main__":
     logging.info(f"Input stack average = {stack.mean()}")
     
     kernel = get_gaussian_kernel(sigma)
-    filtered_stack = filter(stack, kernel, l, w)
+    if args.no_OF:
+        filtered_stack = no_OF_filter(stack, kernel)
+    else:
+        filtered_stack = filter(stack, kernel, l, w)
 
     logging.info(f"{args.output} type = {filtered_stack.dtype}")
     logging.info(f"{args.output} max = {filtered_stack.max()}")
@@ -246,7 +299,9 @@ if __name__ == "__main__":
     if __debug__:
         logging.info(f"writting \"{args.output}\"")
         time_0 = time.process_time()
-    
+
+    logging.debug(f"output = {args.output}")
+        
     MRC_output = ( args.output.split('.')[1] == "MRC" or args.output.split('.')[1] == "mrc" )
 
     if MRC_output:
@@ -254,8 +309,7 @@ if __name__ == "__main__":
             mrc.set_data(filtered_stack.astype(np.float32))
             mrc.data
     else:
-        #imageio.mimwrite(TIFF_file, filtered_stack.astype(np.float32))
-        tifffile.imwrite(args.output, filtered_stack, photometric='minisblack')
+        skimage.io.imsave(args.output, filtered_stack, plugin="tifffile")
 
     if __debug__:
         time_1 = time.process_time()        
