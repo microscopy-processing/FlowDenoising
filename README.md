@@ -1,14 +1,9 @@
-# FlowDenoising: (Optical Flow)-driven volumetric (3D) Gaussian denoising
+# FlowDenoising: (Optical Flow (OF))-driven volumetric (3D) Gaussian denoising
 
-FlowDenoising inputs a data volume (currently MRC and TIFF files are accepted), low-pass filters the data using a Gaussian kernel, and outputs the filtered volume (a MRC file or a sequence of TIFF files).
+FlowDenoising is a Python3 module that inputs a data volume (currently [MRC](https://en.wikipedia.org/wiki/MRC_(file_format)) and [TIFF](https://en.wikipedia.org/wiki/TIFF) files are supported), low-pass filters the data using a OF-driven [Gaussian kernel](https://en.wikipedia.org/wiki/Gaussian_filter), and outputs the filtered volume (MRC or TIFF).
 
-Example:
+Example of use:
 
-    > ls -l *.mrc
-    empiar10311_crop.mrc
-    > python flowdenoising.py --sigma 2.0 --input empiar10311_crop.mrc --output filtered_empiar10311_crop.mrc
-    > ls -l *.mrc
-    empiar10311_crop.mrc
-    filtered_empiar10311_crop.mrc
+    > python flowdenoising.py --input stack.mrc --output filtered_stack.mrc
     
-In the [manual](https://github.com/microscopy-processing/FlowDenoising/blob/main/manual/manual.ipynb) you will find more information.
+Please, read the [manual](https://github.com/microscopy-processing/FlowDenoising/blob/main/manual/manual.ipynb) for getting more information.
