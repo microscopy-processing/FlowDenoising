@@ -65,13 +65,14 @@ def get_flow(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIDE):
         logging.debug(f"OF computed in {time_1 - time_0} seconds")
     return flow
 
-def OF_filter_along_Z(stack, kernel, l, w):
+def OF_filter_along_Z(stack, kernel, l, w, mean):
     logging.info(f"Filtering along Z with l={l} and w={w}")
     if __debug__:
         time_0 = time.process_time()
     filtered_stack = np.zeros_like(stack).astype(np.float32)
     shape_of_stack = np.shape(stack)
-    padded_stack = np.zeros(shape=(shape_of_stack[0] + kernel.size, shape_of_stack[1], shape_of_stack[2]))
+    #padded_stack = np.zeros(shape=(shape_of_stack[0] + kernel.size, shape_of_stack[1], shape_of_stack[2]))
+    padded_stack = np.full(shape=(shape_of_stack[0] + kernel.size, shape_of_stack[1], shape_of_stack[2]), fill_value=mean)
     padded_stack[kernel.size//2:shape_of_stack[0] + kernel.size//2, :, :] = stack
     Z_dim = stack.shape[0]
     for z in range(Z_dim):
@@ -90,13 +91,14 @@ def OF_filter_along_Z(stack, kernel, l, w):
         logging.debug(f"Filtering along Z spent {time_1 - time_0} seconds")
     return filtered_stack
 
-def no_OF_filter_along_Z(stack, kernel):
+def no_OF_filter_along_Z(stack, kernel, mean):
     logging.info(f"Filtering along Z with l={l} and w={w}")
     if __debug__:
         time_0 = time.process_time()
     filtered_stack = np.zeros_like(stack).astype(np.float32)
     shape_of_stack = np.shape(stack)
-    padded_stack = np.zeros(shape=(shape_of_stack[0] + kernel.size, shape_of_stack[1], shape_of_stack[2]))
+    #padded_stack = np.zeros(shape=(shape_of_stack[0] + kernel.size, shape_of_stack[1], shape_of_stack[2]))
+    padded_stack = np.full(shape=(shape_of_stack[0] + kernel.size, shape_of_stack[1], shape_of_stack[2]), fill_value=mean)
     padded_stack[kernel.size//2:shape_of_stack[0] + kernel.size//2, ...] = stack
     Z_dim = stack.shape[0]
     for z in range(Z_dim):
@@ -110,13 +112,14 @@ def no_OF_filter_along_Z(stack, kernel):
         logging.debug(f"Filtering along Z spent {time_1 - time_0} seconds")
     return filtered_stack
 
-def OF_filter_along_Y(stack, kernel, l, w):
+def OF_filter_along_Y(stack, kernel, l, w, mean):
     logging.info(f"Filtering along Y with l={l} and w={w}")
     if __debug__:
         time_0 = time.process_time()
     filtered_stack = np.zeros_like(stack).astype(np.float32)
     shape_of_stack = np.shape(stack)
-    padded_stack = np.zeros(shape=(shape_of_stack[0], shape_of_stack[1] + kernel.size, shape_of_stack[2]))
+    #padded_stack = np.zeros(shape=(shape_of_stack[0], shape_of_stack[1] + kernel.size, shape_of_stack[2]))
+    padded_stack = np.full(shape=(shape_of_stack[0], shape_of_stack[1] + kernel.size, shape_of_stack[2]), fill_value=mean)
     padded_stack[:, kernel.size//2:shape_of_stack[1] + kernel.size//2, :] = stack
     Y_dim = stack.shape[1]
     for y in range(Y_dim):
@@ -135,13 +138,14 @@ def OF_filter_along_Y(stack, kernel, l, w):
         logging.debug(f"Filtering along Y spent {time_1 - time_0} seconds")
     return filtered_stack
 
-def no_OF_filter_along_Y(stack, kernel):
+def no_OF_filter_along_Y(stack, kernel, mean):
     logging.info(f"Filtering along Y with l={l} and w={w}")
     if __debug__:
         time_0 = time.process_time()
     filtered_stack = np.zeros_like(stack).astype(np.float32)
     shape_of_stack = np.shape(stack)
-    padded_stack = np.zeros(shape=(shape_of_stack[0], shape_of_stack[1] + kernel.size, shape_of_stack[2]))
+    #padded_stack = np.zeros(shape=(shape_of_stack[0], shape_of_stack[1] + kernel.size, shape_of_stack[2]))
+    padded_stack = np.full(shape=(shape_of_stack[0], shape_of_stack[1] + kernel.size, shape_of_stack[2]), fill_value=mean)
     padded_stack[:, kernel.size//2:shape_of_stack[1] + kernel.size//2, :] = stack
     Y_dim = stack.shape[1]
     for y in range(Y_dim):
@@ -155,13 +159,14 @@ def no_OF_filter_along_Y(stack, kernel):
         logging.debug(f"Filtering along Y spent {time_1 - time_0} seconds")
     return filtered_stack
 
-def OF_filter_along_X(stack, kernel, l, w):
+def OF_filter_along_X(stack, kernel, l, w, mean):
     logging.info(f"Filtering along X with l={l} and w={w}")
     if __debug__:
         time_0 = time.process_time()
     filtered_stack = np.zeros_like(stack).astype(np.float32)
     shape_of_stack = np.shape(stack)
-    padded_stack = np.zeros(shape=(shape_of_stack[0], shape_of_stack[1], shape_of_stack[2] + kernel.size))
+    #padded_stack = np.zeros(shape=(shape_of_stack[0], shape_of_stack[1], shape_of_stack[2] + kernel.size))
+    padded_stack = np.full(shape=(shape_of_stack[0], shape_of_stack[1], shape_of_stack[2] + kernel.size), fill_value=mean)
     padded_stack[:, :, kernel.size//2:shape_of_stack[2] + kernel.size//2] = stack
     X_dim = stack.shape[2]
     for x in range(X_dim):
@@ -180,13 +185,14 @@ def OF_filter_along_X(stack, kernel, l, w):
         logging.debug(f"Filtering along X spent {time_1 - time_0} seconds")
     return filtered_stack
 
-def no_OF_filter_along_X(stack, kernel):
+def no_OF_filter_along_X(stack, kernel, mean):
     logging.info(f"Filtering along X with l={l} and w={w}")
     if __debug__:
         time_0 = time.process_time()
     filtered_stack = np.zeros_like(stack).astype(np.float32)
     shape_of_stack = np.shape(stack)
-    padded_stack = np.zeros(shape=(shape_of_stack[0], shape_of_stack[1], shape_of_stack[2] + kernel.size))
+    #padded_stack = np.zeros(shape=(shape_of_stack[0], shape_of_stack[1], shape_of_stack[2] + kernel.size))
+    padded_stack = np.full(shape=(shape_of_stack[0], shape_of_stack[1], shape_of_stack[2] + kernel.size), fill_value=mean)
     padded_stack[:, :, kernel.size//2:shape_of_stack[2] + kernel.size//2] = stack
     X_dim = stack.shape[2]
     for x in range(X_dim):
@@ -201,15 +207,17 @@ def no_OF_filter_along_X(stack, kernel):
     return filtered_stack
 
 def OF_filter(stack, kernel, l, w):
-    filtered_stack_Z = OF_filter_along_Z(stack, kernel, l, w)
-    filtered_stack_ZY = OF_filter_along_Y(filtered_stack_Z, kernel, l, w)
-    filtered_stack_ZYX = OF_filter_along_X(filtered_stack_ZY, kernel, l, w)
+    mean = stack.mean()
+    filtered_stack_Z = OF_filter_along_Z(stack, kernel, l, w, mean)
+    filtered_stack_ZY = OF_filter_along_Y(filtered_stack_Z, kernel, l, w, mean)
+    filtered_stack_ZYX = OF_filter_along_X(filtered_stack_ZY, kernel, l, w, mean)
     return filtered_stack_ZYX
 
 def no_OF_filter(stack, kernel):
-    filtered_stack_Z = no_OF_filter_along_Z(stack, kernel)
-    filtered_stack_ZY = no_OF_filter_along_Y(filtered_stack_Z, kernel)
-    filtered_stack_ZYX = no_OF_filter_along_X(filtered_stack_ZY, kernel)
+    mean = stack.mean()
+    filtered_stack_Z = no_OF_filter_along_Z(stack, kernel, mean)
+    filtered_stack_ZY = no_OF_filter_along_Y(filtered_stack_Z, kernel, mean)
+    filtered_stack_ZYX = no_OF_filter_along_X(filtered_stack_ZY, kernel, mean)
     return filtered_stack_ZYX
 
 def int_or_str(text):
@@ -226,10 +234,10 @@ parser = argparse.ArgumentParser(
 #                    default="MRC")
 parser.add_argument("-i", "--input", type=int_or_str,
                     help="Input a MRC-file or a multi-image TIFF-file",
-                    default="./stack.tif")
+                    default="./stack.mrc")
 parser.add_argument("-o", "--output", type=int_or_str,
                     help="Output a MRC-file or a multi-image TIFF-file",
-                    default="./filtered_stack.tif")
+                    default="./filtered_stack.mrc")
 #parser.add_argument("-n", "--number_of_images", type=int_or_str,
 #                    help="Number of input images (only if the sequence of images is input)",
 #                    default=32)
@@ -268,7 +276,8 @@ if __name__ == "__main__":
 
     logging.debug(f"input = {args.input}")
 
-    MRC_input = ( args.input.split('.')[1] == "MRC" or args.input.split('.')[1] == "mrc" )
+    MRC_input = ( args.input.split('.')[2] == "MRC" or args.input.split('.')[2] == "mrc" )
+    print(MRC_input, args.input,  args.input.split('.')[2])
     if MRC_input:
         stack_MRC = mrcfile.open(args.input)
         stack = stack_MRC.data
