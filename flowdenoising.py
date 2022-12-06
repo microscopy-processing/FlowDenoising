@@ -3,8 +3,11 @@
 '''
 
 # "flowdenoising.py" is part of "https://github.com/microscopy-processing/FlowDenoising", authored by:
+#
 # * J.J. Fernández (CSIC).
 # * V. González-Ruiz (UAL).
+#
+# Please, refer to the LICENSE to know the terms of usage of this software.
 
 import logging
 import os
