@@ -20,8 +20,12 @@ import tifffile
 import skimage.io
 import mrcfile
 import argparse
+import threading
+import time
 
 LOGGING_FORMAT = "[%(asctime)s] (%(levelname)s) %(message)s"
+
+__percent__ = 0
 
 def get_gaussian_kernel(sigma=1):
     logging.info(f"Computing gaussian kernel with sigma={sigma}")
@@ -69,7 +73,8 @@ def get_flow(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIDE):
     return flow
 
 def OF_filter_along_Z(stack, kernel, l, w, mean):
-    logging.info(f"Filtering along Z with l={l} and w={w}")
+    global __percent__
+    logging.info(f"Filtering along Z with l={l}, w={w}, and kernel length={kernel.size}")
     if __debug__:
         time_0 = time.process_time()
     filtered_stack = np.zeros_like(stack).astype(np.float32)
@@ -88,14 +93,16 @@ def OF_filter_along_Z(stack, kernel, l, w, mean):
             else:
                 tmp_slice += stack[z, :, :] * kernel[i]
         filtered_stack[z, :, :] = tmp_slice
-        logging.info(f"Filtering along Z {int(100*(z/Z_dim))}%")
+        #logging.info(f"Filtering along Z {int(100*(z/Z_dim))}%")
+        __percent__ = int(100*(z/Z_dim))
     if __debug__:
         time_1 = time.process_time()
         logging.debug(f"Filtering along Z spent {time_1 - time_0} seconds")
     return filtered_stack
 
 def no_OF_filter_along_Z(stack, kernel, mean):
-    logging.info(f"Filtering along Z with l={l} and w={w}")
+    global __percent__
+    logging.info(f"Filtering along Z with l={l}, w={w}, and kernel length={kernel.size}")
     if __debug__:
         time_0 = time.process_time()
     filtered_stack = np.zeros_like(stack).astype(np.float32)
@@ -109,14 +116,16 @@ def no_OF_filter_along_Z(stack, kernel, mean):
         for i in range(kernel.size):
             tmp_slice += padded_stack[z + i, :, :] * kernel[i]
         filtered_stack[z, :, :] = tmp_slice
-        logging.info(f"Filtering along Z {int(100*(z/Z_dim))}%")
+        #logging.info(f"Filtering along Z {int(100*(z/Z_dim))}%")
+        __percent__ = int(100*(z/Z_dim))
     if __debug__:
         time_1 = time.process_time()
         logging.debug(f"Filtering along Z spent {time_1 - time_0} seconds")
     return filtered_stack
 
 def OF_filter_along_Y(stack, kernel, l, w, mean):
-    logging.info(f"Filtering along Y with l={l} and w={w}")
+    global __percent__
+    logging.info(f"Filtering along Y with l={l}, w={w}, and kernel length={kernel.size}")
     if __debug__:
         time_0 = time.process_time()
     filtered_stack = np.zeros_like(stack).astype(np.float32)
@@ -135,13 +144,15 @@ def OF_filter_along_Y(stack, kernel, l, w, mean):
             else:
                 tmp_slice += stack[:, y, :] * kernel[i]
         filtered_stack[:, y, :] = tmp_slice
-        logging.info(f"Filtering along Y {int(100*(y/Y_dim))}%")
+        #logging.info(f"Filtering along Y {int(100*(y/Y_dim))}%")
+        __percent__ = int(100*(y/Y_dim))
     if __debug__:
         time_1 = time.process_time()
         logging.debug(f"Filtering along Y spent {time_1 - time_0} seconds")
     return filtered_stack
 
 def no_OF_filter_along_Y(stack, kernel, mean):
+    global __percent__
     logging.info(f"Filtering along Y with l={l} and w={w}")
     if __debug__:
         time_0 = time.process_time()
@@ -156,13 +167,15 @@ def no_OF_filter_along_Y(stack, kernel, mean):
         for i in range(kernel.size):
             tmp_slice += padded_stack[:, y + i, :] * kernel[i]
         filtered_stack[:, y, :] = tmp_slice
-        logging.info(f"Filtering along Y {int(100*(y/Y_dim))}%")
+        #logging.info(f"Filtering along Y {int(100*(y/Y_dim))}%")
+        __percent__ = int(100*(y/Y_dim))
     if __debug__:
         time_1 = time.process_time()
         logging.debug(f"Filtering along Y spent {time_1 - time_0} seconds")
     return filtered_stack
 
 def OF_filter_along_X(stack, kernel, l, w, mean):
+    global __percent__
     logging.info(f"Filtering along X with l={l} and w={w}")
     if __debug__:
         time_0 = time.process_time()
@@ -182,13 +195,15 @@ def OF_filter_along_X(stack, kernel, l, w, mean):
             else:
                 tmp_slice += stack[:, :, x] * kernel[i]
         filtered_stack[:, :, x] = tmp_slice
-        logging.info(f"Filtering along X {int(100*(x/X_dim))}%")
+        #logging.info(f"Filtering along X {int(100*(x/X_dim))}%")
+        __percent__ = int(100*(x/X_dim))
     if __debug__:
         time_1 = time.process_time()
         logging.debug(f"Filtering along X spent {time_1 - time_0} seconds")
     return filtered_stack
 
 def no_OF_filter_along_X(stack, kernel, mean):
+    global __percent__
     logging.info(f"Filtering along X with l={l} and w={w}")
     if __debug__:
         time_0 = time.process_time()
@@ -203,7 +218,8 @@ def no_OF_filter_along_X(stack, kernel, mean):
         for i in range(kernel.size):
             tmp_slice += padded_stack[:, :, x + i] * kernel[i]
         filtered_stack[:, :, x] = tmp_slice
-        logging.info(f"Filtering along X {int(100*(x/X_dim))}%")
+        #logging.info(f"Filtering along X {int(100*(x/X_dim))}%")
+        __percent__ = int(100*(x/X_dim))
     if __debug__:
         time_1 = time.process_time()
         logging.debug(f"Filtering along X spent {time_1 - time_0} seconds")
@@ -230,6 +246,12 @@ def int_or_str(text):
     except ValueError:
         return text
 
+def feedback():
+    global __percent__
+    while True:
+        logging.info(f"{__percent__} %")
+        time.sleep(1)
+
 parser = argparse.ArgumentParser(
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 #parser.add_argument("-f", "--format", type=int_or_str,
@@ -237,7 +259,7 @@ parser = argparse.ArgumentParser(
 #                    default="MRC")
 parser.add_argument("-t", "--transpose", nargs="+",
                     help="Transpose pattern (by default the 3D volume in not transposed)",
-                    default="0 1 2")
+                    default=(0, 1, 2))
 parser.add_argument("-i", "--input", type=int_or_str,
                     help="Input a MRC-file or a multi-image TIFF-file",
                     default="./stack.mrc")
@@ -262,8 +284,8 @@ parser.add_argument("-v", "--verbosity", type=int_or_str,
 parser.add_argument("-n", "--no_OF", action="store_true", help="Disable Optical Flow compensation")
 
 if __name__ == "__main__":
+
     parser.description = __doc__
-    #args = parser.parse_known_args()[0]
     args = parser.parse_args()
     
     if args.verbosity == 2:
@@ -275,13 +297,16 @@ if __name__ == "__main__":
     else:
         logging.basicConfig(format=LOGGING_FORMAT, level=logging.CRITICAL)
 
+    thread = threading.Thread(target=feedback)
+    thread.daemon = True # To obey CTRL+C interruption.
+    thread.start()
+        
     sigma = [float(i) for i in args.sigma]
-    logging.info(f"sigma={sigma}")
+    logging.info(f"sigma={tuple(sigma)}")
     l = args.levels
     w = args.winside
-    #print(args.transpose.split(' '))
-    #transpose_pattern = tuple(map(int, args.transpose.split(' ')))
-    #transpose_pattern = tuple(args.transpose)
+    logging.debug(f"Using transpose pattern {args.transpose} {type(args.transpose)}")
+    #transpose_pattern = tuple([int(i) for i in args.transpose.split(' ')])
     transpose_pattern = tuple([int(i) for i in args.transpose])
     logging.info(f"transpose={transpose_pattern}")
 
@@ -292,15 +317,17 @@ if __name__ == "__main__":
     logging.debug(f"input = {args.input}")
 
     MRC_input = ( args.input.split('.')[2] == "MRC" or args.input.split('.')[2] == "mrc" )
-    print(MRC_input, args.input,  args.input.split('.')[2])
     if MRC_input:
         stack_MRC = mrcfile.open(args.input)
         stack = stack_MRC.data
     else:
         stack = skimage.io.imread(args.input, plugin="tifffile").astype(np.float32)
 
+    logging.info(f"shape of the input volume (Z, Y, X) = {stack.shape}")
+    logging.info(f"type of the volume = {stack.dtype}")
+
     stack = np.transpose(stack, transpose_pattern)
-    logging.info(f"Using transpose pattern {transpose_pattern})")
+    logging.info(f"shape of the volume to denoise (Z, Y, X) = {stack.shape}")
 
     if __debug__:
         time_1 = time.process_time()
@@ -321,6 +348,7 @@ if __name__ == "__main__":
         filtered_stack = OF_filter(stack, kernel, l, w)
 
     filtered_stack = np.transpose(filtered_stack, transpose_pattern)
+    logging.info(f"shape of the denoised volume (Z, Y, X) = {filtered_stack.shape}")
 
     logging.info(f"{args.output} type = {filtered_stack.dtype}")
     logging.info(f"{args.output} max = {filtered_stack.max()}")
