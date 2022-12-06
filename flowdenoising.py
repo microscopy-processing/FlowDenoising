@@ -211,16 +211,16 @@ def no_OF_filter_along_X(stack, kernel, mean):
 
 def OF_filter(stack, kernel, l, w):
     mean = stack.mean()
-    filtered_stack_Z = OF_filter_along_Z(stack, kernel, l, w, mean)
-    filtered_stack_ZY = OF_filter_along_Y(filtered_stack_Z, kernel, l, w, mean)
-    filtered_stack_ZYX = OF_filter_along_X(filtered_stack_ZY, kernel, l, w, mean)
+    filtered_stack_Z = OF_filter_along_Z(stack, kernel[0], l, w, mean)
+    filtered_stack_ZY = OF_filter_along_Y(filtered_stack_Z, kernel[1], l, w, mean)
+    filtered_stack_ZYX = OF_filter_along_X(filtered_stack_ZY, kernel[2], l, w, mean)
     return filtered_stack_ZYX
 
 def no_OF_filter(stack, kernel):
     mean = stack.mean()
-    filtered_stack_Z = no_OF_filter_along_Z(stack, kernel, mean)
-    filtered_stack_ZY = no_OF_filter_along_Y(filtered_stack_Z, kernel, mean)
-    filtered_stack_ZYX = no_OF_filter_along_X(filtered_stack_ZY, kernel, mean)
+    filtered_stack_Z = no_OF_filter_along_Z(stack, kernel[0], mean)
+    filtered_stack_ZY = no_OF_filter_along_Y(filtered_stack_Z, kernel[1], mean)
+    filtered_stack_ZYX = no_OF_filter_along_X(filtered_stack_ZY, kernel[2], mean)
     return filtered_stack_ZYX
 
 def int_or_str(text):
@@ -235,6 +235,9 @@ parser = argparse.ArgumentParser(
 #parser.add_argument("-f", "--format", type=int_or_str,
 #                    help="Input and output file format (MRC or TIFF)",
 #                    default="MRC")
+parser.add_argument("-t", "--transpose", nargs="+",
+                    help="Transpose pattern (by default the 3D volume in not transposed)",
+                    default="0 1 2")
 parser.add_argument("-i", "--input", type=int_or_str,
                     help="Input a MRC-file or a multi-image TIFF-file",
                     default="./stack.mrc")
@@ -244,9 +247,10 @@ parser.add_argument("-o", "--output", type=int_or_str,
 #parser.add_argument("-n", "--number_of_images", type=int_or_str,
 #                    help="Number of input images (only if the sequence of images is input)",
 #                    default=32)
-parser.add_argument("-s", "--sigma", type=np.float32,
-                    help="Gaussian sigma",
-                    default=SIGMA)
+parser.add_argument("-s", "--sigma", nargs="+",
+                    help="Gaussian sigma for each dimension in the order (Z, Y, X)",
+                    default=(SIGMA, SIGMA, SIGMA))
+                    #default=f"{SIGMA} {SIGMA} {SIGMA}")
 parser.add_argument("-l", "--levels", type=int_or_str,
                     help="Number of levels of the Gaussian pyramid used by the optical flow estimator",
                     default=OF_LEVELS)
@@ -259,7 +263,9 @@ parser.add_argument("-n", "--no_OF", action="store_true", help="Disable Optical 
 
 if __name__ == "__main__":
     parser.description = __doc__
-    args = parser.parse_known_args()[0]
+    #args = parser.parse_known_args()[0]
+    args = parser.parse_args()
+    
     if args.verbosity == 2:
         logging.basicConfig(format=LOGGING_FORMAT, level=logging.DEBUG)
         logging.info("Verbosity level = 2")
@@ -269,9 +275,15 @@ if __name__ == "__main__":
     else:
         logging.basicConfig(format=LOGGING_FORMAT, level=logging.CRITICAL)
 
-    sigma = args.sigma
+    sigma = [float(i) for i in args.sigma]
+    logging.info(f"sigma={sigma}")
     l = args.levels
     w = args.winside
+    #print(args.transpose.split(' '))
+    #transpose_pattern = tuple(map(int, args.transpose.split(' ')))
+    #transpose_pattern = tuple(args.transpose)
+    transpose_pattern = tuple([int(i) for i in args.transpose])
+    logging.info(f"transpose={transpose_pattern}")
 
     if __debug__:
         logging.info(f"reading \"{args.input}\"")
@@ -287,6 +299,9 @@ if __name__ == "__main__":
     else:
         stack = skimage.io.imread(args.input, plugin="tifffile").astype(np.float32)
 
+    stack = np.transpose(stack, transpose_pattern)
+    logging.info(f"Using transpose pattern {transpose_pattern})")
+
     if __debug__:
         time_1 = time.process_time()
         logging.info(f"read \"{args.input}\" in {time_1 - time_0} seconds")
@@ -295,12 +310,17 @@ if __name__ == "__main__":
     logging.info(f"{args.input} max = {stack.max()}")
     logging.info(f"{args.input} min = {stack.min()}")
     logging.info(f"Input stack average = {stack.mean()}")
-    
-    kernel = get_gaussian_kernel(sigma)
+
+    kernel = [None]*3
+    kernel[0] = get_gaussian_kernel(sigma[0])
+    kernel[1] = get_gaussian_kernel(sigma[1])
+    kernel[2] = get_gaussian_kernel(sigma[2])
     if args.no_OF:
         filtered_stack = no_OF_filter(stack, kernel)
     else:
         filtered_stack = OF_filter(stack, kernel, l, w)
+
+    filtered_stack = np.transpose(filtered_stack, transpose_pattern)
 
     logging.info(f"{args.output} type = {filtered_stack.dtype}")
     logging.info(f"{args.output} max = {filtered_stack.max()}")
