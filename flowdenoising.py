@@ -153,7 +153,7 @@ def OF_filter_along_Y(stack, kernel, l, w, mean):
 
 def no_OF_filter_along_Y(stack, kernel, mean):
     global __percent__
-    logging.info(f"Filtering along Y with l={l} and w={w}")
+    logging.info(f"Filtering along Y with l={l}, w={w}, and kernel length={kernel.size}")
     if __debug__:
         time_0 = time.process_time()
     filtered_stack = np.zeros_like(stack).astype(np.float32)
@@ -176,7 +176,7 @@ def no_OF_filter_along_Y(stack, kernel, mean):
 
 def OF_filter_along_X(stack, kernel, l, w, mean):
     global __percent__
-    logging.info(f"Filtering along X with l={l} and w={w}")
+    logging.info(f"Filtering along X with l={l}, w={w}, and kernel length={kernel.size}")
     if __debug__:
         time_0 = time.process_time()
     filtered_stack = np.zeros_like(stack).astype(np.float32)
@@ -204,7 +204,7 @@ def OF_filter_along_X(stack, kernel, l, w, mean):
 
 def no_OF_filter_along_X(stack, kernel, mean):
     global __percent__
-    logging.info(f"Filtering along X with l={l} and w={w}")
+    logging.info(f"Filtering along X with l={l}, w={w}, and kernel length={kernel.size}")
     if __debug__:
         time_0 = time.process_time()
     filtered_stack = np.zeros_like(stack).astype(np.float32)
