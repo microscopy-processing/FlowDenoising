@@ -265,7 +265,7 @@ parser.add_argument("-i", "--input", type=int_or_str,
                     default="./stack.mrc")
 parser.add_argument("-o", "--output", type=int_or_str,
                     help="Output a MRC-file or a multi-image TIFF-file",
-                    default="./filtered_stack.mrc")
+                    default="./denoised_stack.mrc")
 #parser.add_argument("-n", "--number_of_images", type=int_or_str,
 #                    help="Number of input images (only if the sequence of images is input)",
 #                    default=32)
@@ -316,7 +316,8 @@ if __name__ == "__main__":
 
     logging.debug(f"input = {args.input}")
 
-    MRC_input = ( args.input.split('.')[2] == "MRC" or args.input.split('.')[2] == "mrc" )
+    #MRC_input = ( args.input.split('.')[1] == "MRC" or args.input.split('.')[1] == "mrc" )
+    MRC_input = ( args.input.split('.')[-1] == "MRC" or args.input.split('.')[-1] == "mrc" )
     if MRC_input:
         stack_MRC = mrcfile.open(args.input)
         stack = stack_MRC.data
