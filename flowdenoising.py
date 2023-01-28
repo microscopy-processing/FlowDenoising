@@ -49,27 +49,20 @@ OF_POLY_SIGMA = 1.2
 SIGMA = 2.0
 
 def warp_slice(reference, flow):
-    if __debug__:
-        logging.debug("Warping slice")
-        time_0 = time.process_time()
     height, width = flow.shape[:2]
     map_x = np.tile(np.arange(width), (height, 1))
     map_y = np.swapaxes(np.tile(np.arange(height), (width, 1)), 0, 1)
     map_xy = (flow + np.dstack((map_x, map_y))).astype('float32')
     warped_slice = cv2.remap(reference, map_xy, None, interpolation=cv2.INTER_LINEAR, borderMode=OFCA_EXTENSION_MODE)
-    if __debug__:
-        time_1 = time.process_time()
-        logging.debug(f"Slice warped in {time_1 - time_0} seconds")
     return warped_slice
 
 def get_flow(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIDE):
     if __debug__:
-        logging.debug("Computing OF")
         time_0 = time.process_time()
     flow = cv2.calcOpticalFlowFarneback(prev=target, next=reference, flow=None, pyr_scale=0.5, levels=l, winsize=w, iterations=OF_ITERS, poly_n=OF_POLY_N, poly_sigma=OF_POLY_SIGMA, flags=0)
     if __debug__:
         time_1 = time.process_time()
-        logging.debug(f"OF computed in {time_1 - time_0} seconds")
+        logging.debug(f"OF computed in {1000*(time_1 - time_0):4.3f} ms, max_X={np.max(flow[0]):+3.2f}, min_X={np.min(flow[0]):+3.2f}, max_Y={np.max(flow[1]):+3.2f}, min_Y={np.min(flow[1]):+3.2f}")
     return flow
 
 def OF_filter_along_Z(stack, kernel, l, w, mean):
@@ -77,6 +70,8 @@ def OF_filter_along_Z(stack, kernel, l, w, mean):
     logging.info(f"Filtering along Z with l={l}, w={w}, and kernel length={kernel.size}")
     if __debug__:
         time_0 = time.process_time()
+        min_OF = 1000
+        max_OF = -1000 
     filtered_stack = np.zeros_like(stack).astype(np.float32)
     shape_of_stack = np.shape(stack)
     #padded_stack = np.zeros(shape=(shape_of_stack[0] + kernel.size, shape_of_stack[1], shape_of_stack[2]))
@@ -88,6 +83,13 @@ def OF_filter_along_Z(stack, kernel, l, w, mean):
         for i in range(kernel.size):
             if i != kernel.size//2:
                 flow = get_flow(padded_stack[z + i], stack[z], l, w)
+                if __debug__:
+                    min_OF_iter = np.min(flow)
+                    if min_OF_iter < min_OF:
+                        min_OF = min_OF_iter
+                    max_OF_iter = np.max(flow)
+                    if max_OF < max_OF_iter:
+                        max_OF = max_OF_iter                        
                 OF_compensated_slice = warp_slice(padded_stack[z + i], flow)
                 tmp_slice += OF_compensated_slice * kernel[i]
             else:
@@ -98,6 +100,8 @@ def OF_filter_along_Z(stack, kernel, l, w, mean):
     if __debug__:
         time_1 = time.process_time()
         logging.debug(f"Filtering along Z spent {time_1 - time_0} seconds")
+        logging.debug(f"Min OF val: {min_OF}")
+        logging.debug(f"Max OF val: {max_OF}")
     return filtered_stack
 
 def no_OF_filter_along_Z(stack, kernel, mean):
@@ -128,6 +132,8 @@ def OF_filter_along_Y(stack, kernel, l, w, mean):
     logging.info(f"Filtering along Y with l={l}, w={w}, and kernel length={kernel.size}")
     if __debug__:
         time_0 = time.process_time()
+        min_OF = 1000
+        max_OF = -1000 
     filtered_stack = np.zeros_like(stack).astype(np.float32)
     shape_of_stack = np.shape(stack)
     #padded_stack = np.zeros(shape=(shape_of_stack[0], shape_of_stack[1] + kernel.size, shape_of_stack[2]))
@@ -139,6 +145,13 @@ def OF_filter_along_Y(stack, kernel, l, w, mean):
         for i in range(kernel.size):
             if i != kernel.size//2:
                 flow = get_flow(padded_stack[:, y + i, :], stack[:, y, :], l, w)
+                if __debug__:
+                    min_OF_iter = np.min(flow)
+                    if min_OF_iter < min_OF:
+                        min_OF = min_OF_iter
+                    max_OF_iter = np.max(flow)
+                    if max_OF < max_OF_iter:
+                        max_OF = max_OF_iter                        
                 OF_compensated_slice = warp_slice(padded_stack[:, y + i, :], flow)
                 tmp_slice += OF_compensated_slice * kernel[i]
             else:
@@ -149,6 +162,8 @@ def OF_filter_along_Y(stack, kernel, l, w, mean):
     if __debug__:
         time_1 = time.process_time()
         logging.debug(f"Filtering along Y spent {time_1 - time_0} seconds")
+        logging.debug(f"Min OF val: {min_OF}")
+        logging.debug(f"Max OF val: {max_OF}")
     return filtered_stack
 
 def no_OF_filter_along_Y(stack, kernel, mean):
@@ -316,7 +331,6 @@ if __name__ == "__main__":
 
     logging.debug(f"input = {args.input}")
 
-    #MRC_input = ( args.input.split('.')[1] == "MRC" or args.input.split('.')[1] == "mrc" )
     MRC_input = ( args.input.split('.')[-1] == "MRC" or args.input.split('.')[-1] == "mrc" )
     if MRC_input:
         stack_MRC = mrcfile.open(args.input)
@@ -362,14 +376,20 @@ if __name__ == "__main__":
 
     logging.debug(f"output = {args.output}")
         
-    MRC_output = ( args.output.split('.')[1] == "MRC" or args.output.split('.')[1] == "mrc" )
+    MRC_output = ( args.output.split('.')[-1] == "MRC" or args.output.split('.')[-1] == "mrc" )
 
     if MRC_output:
+        logging.debug(f"Writting MRC file")
         with mrcfile.new(args.output, overwrite=True) as mrc:
             mrc.set_data(filtered_stack.astype(np.float32))
             mrc.data
     else:
-        skimage.io.imsave(args.output, filtered_stack, plugin="tifffile")
+        if np.max(filtered_stack) < 256:
+            logging.debug(f"Writting TIFF file (uint8)")
+            skimage.io.imsave(args.output, filtered_stack.astype(np.uint8), plugin="tifffile")
+        else:
+            logging.debug(f"Writting TIFF file (uint16)")
+            skimage.io.imsave(args.output, filtered_stack.astype(np.uint16), plugin="tifffile")
 
     if __debug__:
         time_1 = time.process_time()        
