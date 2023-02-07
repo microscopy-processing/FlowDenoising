@@ -368,6 +368,7 @@ if __name__ == "__main__":
     kernel[0] = get_gaussian_kernel(sigma[0])
     kernel[1] = get_gaussian_kernel(sigma[1])
     kernel[2] = get_gaussian_kernel(sigma[2])
+    logging.info(f"length of each filter (Z, Y, X) = {[len(i) for i in [*kernel]]}")
     if args.no_OF:
         filtered_vol = no_OF_filter(vol, kernel)
     else:
