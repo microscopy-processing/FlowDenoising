@@ -445,12 +445,9 @@ def feedback():
 
 parser = argparse.ArgumentParser(
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-#parser.add_argument("-f", "--format", type=int_or_str,
-#                    help="Input and output file format (MRC or TIFF)",
-#                    default="MRC")
-parser.add_argument("-t", "--transpose", nargs="+",
-                    help="Transpose pattern (see https://numpy.org/doc/stable/reference/generated/numpy.transpose.html, by default the 3D volume in not transposed)",
-                    default=(0, 1, 2))
+#parser.add_argument("-t", "--transpose", nargs="+",
+#                    help="Transpose pattern (see https://numpy.org/doc/stable/reference/generated/numpy.transpose.html, by default the 3D volume in not transposed)",
+#                    default=(0, 1, 2))
 parser.add_argument("-i", "--input", type=int_or_str,
                     help="Input a MRC-file or a multi-image TIFF-file",
                     default="./volume.mrc")
@@ -472,7 +469,7 @@ parser.add_argument("-w", "--winside", type=int_or_str,
                     default=OF_WINDOW_SIDE)
 parser.add_argument("-v", "--verbosity", type=int_or_str,
                     help="Verbosity level", default=0)
-parser.add_argument("-n", "--no_OF", action="store_true", help="Disable optical flow warping")
+parser.add_argument("-n", "--no_OF", action="store_true", help="Disable optical flow compensation")
 parser.add_argument("-m", "--memory_map", action="store_true", help="Enable memory-mapping (see https://mrcfile.readthedocs.io/en/stable/usage_guide.html#dealing-with-large-files, only for MRC files)")
 
 if __name__ == "__main__":
@@ -497,10 +494,10 @@ if __name__ == "__main__":
     logging.info(f"sigma={tuple(sigma)}")
     l = args.levels
     w = args.winside
-    logging.debug(f"Using transpose pattern {args.transpose} {type(args.transpose)}")
-    #transpose_pattern = tuple([int(i) for i in args.transpose.split(' ')])
-    transpose_pattern = tuple([int(i) for i in args.transpose])
-    logging.info(f"transpose={transpose_pattern}")
+    
+    #logging.debug(f"Using transpose pattern {args.transpose} {type(args.transpose)}")
+    #transpose_pattern = tuple([int(i) for i in args.transpose])
+    #logging.info(f"transpose={transpose_pattern}")
 
     if __debug__:
         logging.info(f"reading \"{args.input}\"")
@@ -522,8 +519,8 @@ if __name__ == "__main__":
     logging.info(f"shape of the input volume (Z, Y, X) = {vol.shape}")
     logging.info(f"type of the volume = {vol.dtype}")
 
-    vol = np.transpose(vol, transpose_pattern)
-    logging.info(f"shape of the volume to denoise (Z, Y, X) = {vol.shape}")
+    #vol = np.transpose(vol, transpose_pattern)
+    #logging.info(f"shape of the volume to denoise (Z, Y, X) = {vol.shape}")
 
     if __debug__:
         time_1 = time.process_time()
@@ -544,7 +541,7 @@ if __name__ == "__main__":
     else:
         filtered_vol = OF_filter(vol, kernel, l, w)
 
-    filtered_vol = np.transpose(filtered_vol, transpose_pattern)
+    #filtered_vol = np.transpose(filtered_vol, transpose_pattern)
     logging.info(f"shape of the denoised volume (Z, Y, X) = {filtered_vol.shape}")
 
     logging.info(f"{args.output} type = {filtered_vol.dtype}")
