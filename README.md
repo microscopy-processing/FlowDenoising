@@ -11,6 +11,6 @@ Please, cite this article if you use this software in your research.
 
 Example of use:
 
-    > python flowdenoising.py --input stack.mrc --output filtered_stack.mrc
+    > python flowdenoising.py -i vol.mrc --output denoised_vol.mrc
     
-Please, read the [manual](https://github.com/microscopy-processing/FlowDenoising/blob/main/manual/manual.ipynb) for getting more information.
+Please, read the [manual](https://github.com/microscopy-processing/FlowDenoising/blob/main/manual/manual.ipynb).
