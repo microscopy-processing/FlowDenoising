@@ -13,4 +13,4 @@ Example of use:
 
     > python flowdenoising.py -i vol.mrc --output denoised_vol.mrc
     
-Please, read the [manual](https://github.com/microscopy-processing/FlowDenoising/blob/main/manual/manual.ipynb).
+The [manual](https://github.com/microscopy-processing/FlowDenoising/blob/main/manual/manual.ipynb) provides extra information.
