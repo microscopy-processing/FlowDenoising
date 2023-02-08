@@ -41,7 +41,7 @@ def get_gaussian_kernel(sigma=1):
     return coeffs[1:-1]
 
 OFCA_EXTENSION_MODE = cv2.BORDER_REPLICATE
-OF_LEVELS = 3
+OF_LEVELS = 0
 OF_WINDOW_SIDE = 5
 OF_ITERS = 3
 OF_POLY_N = 5
@@ -57,6 +57,16 @@ def warp_slice(reference, flow):
     return warped_slice
 
 def get_flow(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIDE, prev_flow=None):
+    if __debug__:
+        time_0 = time.process_time()
+    flow = cv2.calcOpticalFlowFarneback(prev=target, next=reference, flow=prev_flow, pyr_scale=0.5, levels=l, winsize=w, iterations=OF_ITERS, poly_n=OF_POLY_N, poly_sigma=OF_POLY_SIGMA, flags=cv2.OPTFLOW_USE_INITIAL_FLOW)
+    #flow = cv2.calcOpticalFlowFarneback(prev=target, next=reference, flow=None, pyr_scale=0.5, levels=l, winsize=w, iterations=OF_ITERS, poly_n=OF_POLY_N, poly_sigma=OF_POLY_SIGMA, flags=0)
+    if __debug__:
+        time_1 = time.process_time()
+        logging.debug(f"OF computed in {1000*(time_1 - time_0):4.3f} ms, max_X={np.max(flow[0]):+3.2f}, min_X={np.min(flow[0]):+3.2f}, max_Y={np.max(flow[1]):+3.2f}, min_Y={np.min(flow[1]):+3.2f}")
+    return flow
+
+def get_flow_(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIDE, prev_flow=None):
     if __debug__:
         time_0 = time.process_time()
     flow = cv2.calcOpticalFlowFarneback(prev=target, next=reference, flow=prev_flow, pyr_scale=0.5, levels=l, winsize=w, iterations=OF_ITERS, poly_n=OF_POLY_N, poly_sigma=OF_POLY_SIGMA, flags=0)
@@ -78,12 +88,13 @@ def OF_filter_along_Z(vol, kernel, l, w, mean):
     padded_vol = np.full(shape=(shape_of_vol[0] + kernel.size, shape_of_vol[1], shape_of_vol[2]), fill_value=mean)
     padded_vol[kernel.size//2:shape_of_vol[0] + kernel.size//2, :, :] = vol
     Z_dim = vol.shape[0]
-    prev_flow = None
     for z in range(Z_dim):
         tmp_slice = np.zeros_like(vol[z]).astype(np.float32)
         assert kernel.size % 2 != 0 # kernel.size must be odd
-        for i in range(kernel.size//2):
-            flow = get_flow(padded_vol[z + i], vol[z], l, w, prev_flow)
+        prev_flow = np.zeros(shape=(shape_of_vol[1], shape_of_vol[2], 2), dtype=np.float32)
+        for i in range((kernel.size//2) - 1, -1, -1):
+            #print(i)
+            flow = get_flow(padded_vol[z + i, :, :], vol[z, :, :], l, w, prev_flow)
             prev_flow = flow
             if __debug__:
                 min_OF_iter = np.min(flow)
@@ -92,11 +103,13 @@ def OF_filter_along_Z(vol, kernel, l, w, mean):
                 max_OF_iter = np.max(flow)
                 if max_OF < max_OF_iter:
                     max_OF = max_OF_iter
-            OF_compensated_slice = warp_slice(padded_vol[z + i], flow)
+            OF_compensated_slice = warp_slice(padded_vol[z + i, :, :], flow)
             tmp_slice += OF_compensated_slice * kernel[i]
         tmp_slice += vol[z, :, :] * kernel[kernel.size//2]
+        prev_flow = np.zeros(shape=(shape_of_vol[1], shape_of_vol[2], 2), dtype=np.float32)
         for i in range(kernel.size//2+1, kernel.size):
-            flow = get_flow(padded_vol[z + i], vol[z], l, w, prev_flow)
+            #print(i)
+            flow = get_flow(padded_vol[z + i, :, :], vol[z, :, :], l, w, prev_flow)
             prev_flow = flow
             if __debug__:
                 min_OF_iter = np.min(flow)
@@ -105,7 +118,7 @@ def OF_filter_along_Z(vol, kernel, l, w, mean):
                 max_OF_iter = np.max(flow)
                 if max_OF < max_OF_iter:
                     max_OF = max_OF_iter
-            OF_compensated_slice = warp_slice(padded_vol[z + i], flow)
+            OF_compensated_slice = warp_slice(padded_vol[z + i, :, :], flow)
             tmp_slice += OF_compensated_slice * kernel[i]
         filtered_vol[z, :, :] = tmp_slice
         __percent__ = int(100*(z/Z_dim))
@@ -134,7 +147,7 @@ def OF_filter_along_Z_(vol, kernel, l, w, mean):
         tmp_slice = np.zeros_like(vol[z]).astype(np.float32)
         for i in range(kernel.size):
             if i != kernel.size//2:
-                flow = get_flow(padded_vol[z + i], vol[z], l, w)
+                flow = get_flow_(padded_vol[z + i], vol[z], l, w)
                 if __debug__:
                     min_OF_iter = np.min(flow)
                     if min_OF_iter < min_OF:
@@ -191,12 +204,12 @@ def OF_filter_along_Y_(vol, kernel, l, w, mean):
     padded_vol = np.full(shape=(shape_of_vol[0], shape_of_vol[1] + kernel.size, shape_of_vol[2]), fill_value=mean)
     padded_vol[:, kernel.size//2:shape_of_vol[1] + kernel.size//2, :] = vol
     Y_dim = vol.shape[1]
-    prev_flow = None
     for y in range(Y_dim):
         tmp_slice = np.zeros_like(vol[:, y, :]).astype(np.float32)
+        prev_flow = np.zeros(shape=(shape_of_vol[0], shape_of_vol[2], 2), dtype=np.float32)
         for i in range(kernel.size):
             if i != kernel.size//2:
-                flow = get_flow(padded_vol[:, y + i, :], vol[:, y, :], l, w, prev_flow)
+                flow = get_flow_(padded_vol[:, y + i, :], vol[:, y, :], l, w, prev_flow)
                 prev_flow = flow
                 if __debug__:
                     min_OF_iter = np.min(flow)
@@ -232,11 +245,13 @@ def OF_filter_along_Y(vol, kernel, l, w, mean):
     padded_vol = np.full(shape=(shape_of_vol[0], shape_of_vol[1] + kernel.size, shape_of_vol[2]), fill_value=mean)
     padded_vol[:, kernel.size//2:shape_of_vol[1] + kernel.size//2, :] = vol
     Y_dim = vol.shape[1]
-    prev_flow = None
+    #prev_flow = None
     for y in range(Y_dim):
         tmp_slice = np.zeros_like(vol[:, y, :]).astype(np.float32)
         assert kernel.size % 2 != 0 # kernel.size must be odd
-        for i in range(kernel.size//2):
+        prev_flow = np.zeros(shape=(shape_of_vol[0], shape_of_vol[2], 2), dtype=np.float32)
+        for i in range((kernel.size//2) - 1, -1, -1):
+            #print(i)
             flow = get_flow(padded_vol[:, y + i, :], vol[:, y, :], l, w, prev_flow)
             prev_flow = flow
             if __debug__:
@@ -249,7 +264,9 @@ def OF_filter_along_Y(vol, kernel, l, w, mean):
             OF_compensated_slice = warp_slice(padded_vol[:, y + i, :], flow)
             tmp_slice += OF_compensated_slice * kernel[i]
         tmp_slice += vol[:, y, :] * kernel[kernel.size//2]
+        prev_flow = np.zeros(shape=(shape_of_vol[0], shape_of_vol[2], 2), dtype=np.float32)
         for i in range(kernel.size//2+1, kernel.size):
+            #print(i)
             flow = get_flow(padded_vol[:, y + i, :], vol[:, y, :], l, w, prev_flow)
             prev_flow = flow
             if __debug__:
@@ -306,11 +323,13 @@ def OF_filter_along_X(vol, kernel, l, w, mean):
     padded_vol = np.full(shape=(shape_of_vol[0], shape_of_vol[1], shape_of_vol[2] + kernel.size), fill_value=mean)
     padded_vol[:, :, kernel.size//2:shape_of_vol[2] + kernel.size//2] = vol
     X_dim = vol.shape[2]
-    prev_flow = None
+    #prev_flow = None
     for x in range(X_dim):
         tmp_slice = np.zeros_like(vol[:, :, x]).astype(np.float32)
         assert kernel.size % 2 != 0 # kernel.size must be odd
-        for i in range(kernel.size//2):
+        prev_flow = np.zeros(shape=(shape_of_vol[0], shape_of_vol[1], 2), dtype=np.float32)
+        for i in range((kernel.size//2) - 1, -1, -1):
+            #print(i)
             flow = get_flow(padded_vol[:, :, x + i], vol[:, :, x], l, w, prev_flow)
             prev_flow = flow
             if __debug__:
@@ -323,7 +342,9 @@ def OF_filter_along_X(vol, kernel, l, w, mean):
             OF_compensated_slice = warp_slice(padded_vol[:, :, x + i], flow)
             tmp_slice += OF_compensated_slice * kernel[i]
         tmp_slice += vol[:, :, x] * kernel[kernel.size//2]
-        for i in range(kernel.size//2):
+        prev_flow = np.zeros(shape=(shape_of_vol[0], shape_of_vol[1], 2), dtype=np.float32)
+        for i in range(kernel.size//2+1, kernel.size):
+            #print(i)
             flow = get_flow(padded_vol[:, :, x + i], vol[:, :, x], l, w, prev_flow)
             prev_flow = flow
             if __debug__:
@@ -358,7 +379,7 @@ def OF_filter_along_X_(vol, kernel, l, w, mean):
         tmp_slice = np.zeros_like(vol[:, :, x]).astype(np.float32)
         for i in range(kernel.size):
             if i != kernel.size//2:
-                flow = get_flow(padded_vol[:, :, x + i], vol[:, :, x], l, w, prev_flow)
+                flow = get_flow_(padded_vol[:, :, x + i], vol[:, :, x], l, w, prev_flow)
                 prev_flow = flow
                 OF_compensated_slice = warp_slice(padded_vol[:, :, x + i], flow)
                 tmp_slice += OF_compensated_slice * kernel[i]
