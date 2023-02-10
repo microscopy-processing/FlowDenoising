@@ -175,26 +175,19 @@ def no_OF_filter_along_Z(kernel):
     global __percent__
     global __filtered_vol__
     global __padded_vol__
-    logging.info(f"Filtering along Z with l={l}, w={w}, and kernel length={kernel.size}")
+    logging.info(f"Filtering along Z with kernel length={kernel.size}")
     if __debug__:
         time_0 = time.process_time()
-    filtered_vol = np.zeros_like(vol).astype(np.float32)
-    shape_of_vol = np.shape(vol)
-    #padded_vol = np.zeros(shape=(shape_of_vol[0] + kernel.size, shape_of_vol[1], shape_of_vol[2]))
-    padded_vol = np.full(shape=(shape_of_vol[0] + kernel.size, shape_of_vol[1], shape_of_vol[2]), fill_value=mean)
-    padded_vol[kernel.size//2:shape_of_vol[0] + kernel.size//2, ...] = vol
     Z_dim = vol.shape[0]
     for z in range(Z_dim):
-        tmp_slice = np.zeros_like(vol[z, :, :]).astype(np.float32)
+        tmp_slice = np.zeros(shape=(__padded_vol__.shape[1], __padded_vol__.shape[2]), dtype=np.float32)
         for i in range(kernel.size):
-            tmp_slice += padded_vol[z + i, :, :] * kernel[i]
-        filtered_vol[z, :, :] = tmp_slice
-        #logging.info(f"Filtering along Z {int(100*(z/Z_dim))}%")
+            tmp_slice += __padded_vol__[z + i, :, :] * kernel[i]
+        __filtered_vol__[z, :, :] = tmp_slice
         __percent__ = int(100*(z/Z_dim))
     if __debug__:
         time_1 = time.process_time()
         logging.debug(f"Filtering along Z spent {time_1 - time_0} seconds")
-    return filtered_vol
 
 def OF_filter_along_Y(vol, kernel, l, w, mean):
     global __percent__
@@ -262,8 +255,8 @@ def no_OF_filter_along_Y(kernel):
     for y in range(Y_dim):
         tmp_slice = np.zeros(shape=(__padded_vol__.shape[0], __padded_vol__.shape[2]), dtype=np.float32)
         for i in range(kernel.size):
-            tmp_slice += padded_vol[:, y + i, :] * kernel[i]
-        filtered_vol[:, y, :] = tmp_slice
+            tmp_slice += __padded_vol__[:, y + i, :] * kernel[i]
+        __filtered_vol__[:, y, :] = tmp_slice
         __percent__ = int(100*(y/Y_dim))
     if __debug__:
         time_1 = time.process_time()
