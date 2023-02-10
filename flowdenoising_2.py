@@ -183,7 +183,7 @@ def no_OF_filter_along_Z(kernel):
         tmp_slice = np.zeros(shape=(__padded_vol__.shape[1], __padded_vol__.shape[2]), dtype=np.float32)
         for i in range(kernel.size):
             tmp_slice += __padded_vol__[z + i, :, :] * kernel[i]
-        __filtered_vol__[z, :, :] = tmp_slice
+        __filtered_vol__[z + kernel.size//2, :, :] = tmp_slice
         __percent__ = int(100*(z/Z_dim))
     if __debug__:
         time_1 = time.process_time()
@@ -256,7 +256,7 @@ def no_OF_filter_along_Y(kernel):
         tmp_slice = np.zeros(shape=(__padded_vol__.shape[0], __padded_vol__.shape[2]), dtype=np.float32)
         for i in range(kernel.size):
             tmp_slice += __padded_vol__[:, y + i, :] * kernel[i]
-        __filtered_vol__[:, y, :] = tmp_slice
+        __filtered_vol__[:, y + kernel.size//2, :] = tmp_slice
         __percent__ = int(100*(y/Y_dim))
     if __debug__:
         time_1 = time.process_time()
@@ -327,7 +327,7 @@ def no_OF_filter_along_X(kernel):
         tmp_slice = np.zeros(shape=(__padded_vol__.shape[0], __padded_vol__.shape[1]), dtype=np.float32)
         for i in range(kernel.size):
             tmp_slice += __padded_vol__[:, :, x + i] * kernel[i]
-        __filtered_vol__[:, :, x] = tmp_slice
+        __filtered_vol__[:, :, x + kernel.size//2] = tmp_slice
         __percent__ = int(100*(x/X_dim))
     if __debug__:
         time_1 = time.process_time()
@@ -453,24 +453,32 @@ if __name__ == "__main__":
     kernels[2] = get_gaussian_kernel(sigma[2])
     logging.info(f"length of each filter (Z, Y, X) = {[len(i) for i in [*kernels]]}")
 
-    padded_vol__shape = (vol.shape[0] + kernels[0].size, vol.shape[1] + kernels[1].size, vol.shape[2] + kernels[2].size)
-    __padded_vol__ = np.full(shape=padded_vol__shape, fill_value=vol_mean)
-    __padded_vol__[kernels[0].size//2:vol.shape[0] + kernels[0].size//2, kernels[1].size//2:vol.shape[1] + kernels[1].size//2, kernels[2].size//2:vol.shape[2] + kernels[2].size//2] = vol
+    padded_vol__shape = (vol.shape[0] + kernels[0].size,
+                         vol.shape[1] + kernels[1].size,
+                         vol.shape[2] + kernels[2].size)
+    __padded_vol__ = np.full(shape=padded_vol__shape, fill_value=vol_mean, dtype=np.float32)
+    __padded_vol__[kernels[0].size//2:-kernels[0].size//2,
+                   kernels[1].size//2:-kernels[1].size//2,
+                   kernels[2].size//2:-kernels[2].size//2] = vol
     filtered_vol__shape = padded_vol__shape
-    __filtered_vol__ = np.full(shape=filtered_vol__shape, fill_value=0)
+    __filtered_vol__ = np.full(shape=filtered_vol__shape, fill_value=0.0, dtype=np.float32)
     
     if args.no_OF:
         no_OF_filter(kernels)
     else:
         filtered_vol = OF_filter(vol, kernel, l, w)
 
-    #filtered_vol = np.transpose(filtered_vol, transpose_pattern)
-    logging.info(f"shape of the denoised volume (Z, Y, X) = {__filtered_vol__.shape}")
+    filtered_vol = __filtered_vol__[kernels[0].size//2:-kernels[0].size//2,
+                                    kernels[1].size//2:-kernels[1].size//2,
+                                    kernels[2].size//2:-kernels[2].size//2]
 
-    logging.info(f"{args.output} type = {__filtered_vol__.dtype}")
-    logging.info(f"{args.output} max = {__filtered_vol__.max()}")
-    logging.info(f"{args.output} min = {__filtered_vol__.min()}")
-    logging.info(f"Output vol average = {__filtered_vol__.mean()}")
+    #filtered_vol = np.transpose(filtered_vol, transpose_pattern)
+    logging.info(f"shape of the denoised volume (Z, Y, X) = {filtered_vol.shape}")
+
+    logging.info(f"{args.output} type = {filtered_vol.dtype}")
+    logging.info(f"{args.output} max = {filtered_vol.max()}")
+    logging.info(f"{args.output} min = {filtered_vol.min()}")
+    logging.info(f"Output vol average = {filtered_vol.mean()}")
     
     if __debug__:
         logging.info(f"writting \"{args.output}\"")
@@ -483,15 +491,15 @@ if __name__ == "__main__":
     if MRC_output:
         logging.debug(f"Writting MRC file")
         with mrcfile.new(args.output, overwrite=True) as mrc:
-            mrc.set_data(__filtered_vol__.astype(np.float32))
+            mrc.set_data(filtered_vol.astype(np.float32))
             mrc.data
     else:
         if np.max(filtered_vol) < 256:
-            logging.debug(f"Writting TIFF file (uint8)")
-            skimage.io.imsave(args.output, __filtered_vol__.astype(np.uint8), plugin="tifffile")
+            logging.info(f"Writting TIFF file (uint8)")
+            skimage.io.imsave(args.output, filtered_vol.astype(np.uint8), plugin="tifffile")
         else:
-            logging.debug(f"Writting TIFF file (uint16)")
-            skimage.io.imsave(args.output, __filtered_vol__.astype(np.uint16), plugin="tifffile")
+            logging.info(f"Writting TIFF file (uint16)")
+            skimage.io.imsave(args.output, filtered_vol.astype(np.uint16), plugin="tifffile")
 
     if __debug__:
         time_1 = time.process_time()        
