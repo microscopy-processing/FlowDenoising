@@ -289,8 +289,11 @@ def no_OF_filter_along_X_slice(x, chunk_shape, padded_chunk, kernel):
         tmp_slice += padded_chunk[:, :, x + i]*kernel[i]
     __vol__[:, :, x] = tmp_slice
     #__percent__ = int(100*(x/X_dim))
-    #x = 1/0
     return x
+
+def no_OF_filter_along_X_chunk(X_dim, i, chunk, padded_chunk, kernel):
+    for x in range(X_dim//__number_of_CPUs__):
+        no_OF_filter_along_X_slice(x*__number_of_CPUs__+i, chunk.shape, padded_chunk, kernel)
 
 def no_OF_filter_along_X(chunk, kernel, mean):
     global __percent__
@@ -307,13 +310,12 @@ def no_OF_filter_along_X(chunk, kernel, mean):
     chunk_shapes = [chunk.shape]*__number_of_CPUs__
     padded_chunks = [padded_chunk]*__number_of_CPUs__
     kernels = [kernel]*__number_of_CPUs__
-    for x in range(X_dim//__number_of_CPUs__):
-        #for i in range(__number_of_CPUs__):
-        #    no_OF_filter_along_X_slice(x*__number_of_CPUs__+i, chunk.shape, padded_chunk, kernel)
-        slice_indexes = [x*__number_of_CPUs__+i for i in range(__number_of_CPUs__)]
-        with ProcessPoolExecutor(max_workers=__number_of_CPUs__) as executor:
-            for _ in executor.map(no_OF_filter_along_X_slice, slice_indexes, chunk_shapes, padded_chunks, kernels):
-                print(_)
+    for i in range(__number_of_CPUs__):
+        no_OF_filter_along_X_chunk(X_dim, i, chunk, padded_chunk, kernel)
+        #slice_indexes = [x*__number_of_CPUs__+i for i in range(__number_of_CPUs__)]
+        #with ProcessPoolExecutor(max_workers=__number_of_CPUs__) as executor:
+        #    for _ in executor.map(no_OF_filter_along_X_slice, slice_indexes, chunk_shapes, padded_chunks, kernels):
+        #        print(_)
     if __debug__:
         time_1 = time.process_time()
         logging.debug(f"Filtering along X spent {time_1 - time_0} seconds")
@@ -416,7 +418,7 @@ if __name__ == "__main__":
     SM_vol = shared_memory.SharedMemory(
         create=True,
         size=__vol__.size*__vol__.dtype.itemsize,
-        name="vol")
+        name="vol") # /dev/shm/vol
     vol = np.ndarray(
         shape=__vol__.shape,
         dtype=__vol__.dtype,
