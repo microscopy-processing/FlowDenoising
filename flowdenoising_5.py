@@ -293,7 +293,7 @@ def no_OF_filter_along_X_slice(x, chunk_shape, padded_chunk, kernel):
 def no_OF_filter_along_X_chunk(i, chunk, padded_chunk, kernel):
     X_dim = chunk.shape[2]
     for x in range(X_dim//__number_of_CPUs__):
-        no_OF_filter_along_X_slice(x*__number_of_CPUs__+i, chunk.shape, padded_chunk, kernel)
+        no_OF_filter_along_X_slice(x*__number_of_CPUs__ + i, chunk.shape, padded_chunk, kernel)
     return i
 
 def no_OF_filter_along_X(chunk, kernel, mean):
@@ -306,7 +306,6 @@ def no_OF_filter_along_X(chunk, kernel, mean):
                                   chunk.shape[2] + kernel.size),
                            fill_value=mean)
     padded_chunk[:, :, kernel.size//2:chunk.shape[2] + kernel.size//2] = chunk
-    X_dim = chunk.shape[2]
 
     #for i in range(__number_of_CPUs__):
     #    no_OF_filter_along_X_chunk(i, chunk, padded_chunk, kernel)
