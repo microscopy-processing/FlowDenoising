@@ -23,6 +23,12 @@ import argparse
 import threading
 import time
 
+import concurrent
+import multiprocessing
+from multiprocessing import shared_memory
+from concurrent.futures.process import ProcessPoolExecutor
+__number_of_CPUs__ = multiprocessing.cpu_count()
+
 LOGGING_FORMAT = "[%(asctime)s] (%(levelname)s) %(message)s"
 
 __percent__ = 0
@@ -276,31 +282,50 @@ def no_OF_filter_along_Y(kernel, mean):
         time_1 = time.process_time()
         logging.debug(f"Filtering along Y spent {time_1 - time_0} seconds")
 
-def no_OF_filter_along_X(kernel, mean):
+def no_OF_filter_along_X_slice(x, chunk_shape, padded_chunk, kernel):
+    tmp_slice = np.zeros(shape=(chunk_shape[0], chunk_shape[1]),
+                         dtype=np.float32)
+    for i in range(kernel.size):
+        tmp_slice += padded_chunk[:, :, x + i]*kernel[i]
+    __vol__[:, :, x] = tmp_slice
+    #__percent__ = int(100*(x/X_dim))
+    #x = 1/0
+    return x
+
+def no_OF_filter_along_X(chunk, kernel, mean):
     global __percent__
-    logging.info(f"Filtering along X with l={l}, w={w}, and kernel length={kernel.size}")
+    logging.info(f"Filtering along X with kernel length={kernel.size}")
     if __debug__:
         time_0 = time.process_time()
-    shape_of_vol = np.shape(__vol__)
-    padded_vol = np.full(shape=(shape_of_vol[0], shape_of_vol[1], shape_of_vol[2] + kernel.size), fill_value=mean)
-    padded_vol[:, :, kernel.size//2:shape_of_vol[2] + kernel.size//2] = __vol__
-    X_dim = __vol__.shape[2]
-    for x in range(X_dim):
-        tmp_slice = np.zeros_like(__vol__[:, :, x]).astype(np.float32)
-        for i in range(kernel.size):
-            tmp_slice += padded_vol[:, :, x + i]*kernel[i]
-        __vol__[:, :, x] = tmp_slice
-        __percent__ = int(100*(x/X_dim))
+    padded_chunk = np.full(shape=(chunk.shape[0],
+                                  chunk.shape[1],
+                                  chunk.shape[2] + kernel.size),
+                           fill_value=mean)
+    padded_chunk[:, :, kernel.size//2:chunk.shape[2] + kernel.size//2] = chunk
+    X_dim = chunk.shape[2]
+
+    chunk_shapes = [chunk.shape]*__number_of_CPUs__
+    padded_chunks = [padded_chunk]*__number_of_CPUs__
+    kernels = [kernel]*__number_of_CPUs__
+    for x in range(X_dim//__number_of_CPUs__):
+        #for i in range(__number_of_CPUs__):
+        #    no_OF_filter_along_X_slice(x*__number_of_CPUs__+i, chunk.shape, padded_chunk, kernel)
+        slice_indexes = [x*__number_of_CPUs__+i for i in range(__number_of_CPUs__)]
+        with ProcessPoolExecutor(max_workers=__number_of_CPUs__) as executor:
+            for _ in executor.map(no_OF_filter_along_X_slice, slice_indexes, chunk_shapes, padded_chunks, kernels):
+                print(_)
     if __debug__:
         time_1 = time.process_time()
         logging.debug(f"Filtering along X spent {time_1 - time_0} seconds")
 
-def no_OF_filter(kernel):
+def no_OF_filter(kernels):
     mean = __vol__.mean()
-    no_OF_filter_along_Z(kernel[0], mean)
-    no_OF_filter_along_Y(kernel[1], mean)
-    no_OF_filter_along_X(kernel[2], mean)
-
+    no_OF_filter_along_Z(kernels[0], mean)
+    no_OF_filter_along_Y(kernels[1], mean)
+    no_OF_filter_along_X(__vol__, kernels[2], mean)
+    #no_OF_filter_along_X(__vol__[: ,: ,:__vol__.shape[2]//2 + kernel[2].size//2], kernel[2], mean)
+    #no_OF_filter_along_X(__vol__[: ,: ,__vol__.shape[2]//2 - kernel[2].size//2:], kernel[2], mean)
+    
 def int_or_str(text):
     '''Helper function for argument parsing.'''
     try:
@@ -387,6 +412,18 @@ if __name__ == "__main__":
     else:
         __vol__ = skimage.io.imread(args.input, plugin="tifffile").astype(np.float32)
 
+    # Copy to shared memory
+    SM_vol = shared_memory.SharedMemory(
+        create=True,
+        size=__vol__.size*__vol__.dtype.itemsize,
+        name="vol")
+    vol = np.ndarray(
+        shape=__vol__.shape,
+        dtype=__vol__.dtype,
+        buffer=SM_vol.buf)
+    vol[...] = __vol__[...]
+    __vol__ = vol
+
     logging.info(f"shape of the input volume (Z, Y, X) = {__vol__.shape}")
     logging.info(f"type of the volume = {__vol__.dtype}")
 
@@ -443,6 +480,9 @@ if __name__ == "__main__":
             logging.debug(f"Writting TIFF file (uint16)")
             skimage.io.imsave(args.output, __vol__.astype(np.uint16), plugin="tifffile")
 
+    SM_vol.close()
+    SM_vol.unlink()
+    
     if __debug__:
         time_1 = time.process_time()        
         logging.info(f"written \"{args.output}\" in {time_1 - time_0} seconds")
