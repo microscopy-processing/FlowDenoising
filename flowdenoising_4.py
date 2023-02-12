@@ -246,9 +246,9 @@ def no_OF_filter_along_Z(kernel, mean):
     shape_of_vol = np.shape(__vol__)
     padded_vol = np.full(shape=(shape_of_vol[0] + kernel.size, shape_of_vol[1], shape_of_vol[2]), fill_value=mean)
     padded_vol[kernel.size//2:shape_of_vol[0] + kernel.size//2, ...] = __vol__
-    Z_dim = vol.shape[0]
+    Z_dim = __vol__.shape[0]
     for z in range(Z_dim):
-        tmp_slice = np.zeros_like(vol[z, :, :]).astype(np.float32)
+        tmp_slice = np.zeros_like(__vol__[z, :, :]).astype(np.float32)
         for i in range(kernel.size):
             tmp_slice += padded_vol[z + i, :, :] * kernel[i]
         __vol__[z, :, :] = tmp_slice
@@ -265,9 +265,9 @@ def no_OF_filter_along_Y(kernel, mean):
     shape_of_vol = np.shape(__vol__)
     padded_vol = np.full(shape=(shape_of_vol[0], shape_of_vol[1] + kernel.size, shape_of_vol[2]), fill_value=mean)
     padded_vol[:, kernel.size//2:shape_of_vol[1] + kernel.size//2, :] = __vol__
-    Y_dim = vol.shape[1]
+    Y_dim = __vol__.shape[1]
     for y in range(Y_dim):
-        tmp_slice = np.zeros_like(vol[:, y, :]).astype(np.float32)
+        tmp_slice = np.zeros_like(__vol__[:, y, :]).astype(np.float32)
         for i in range(kernel.size):
             tmp_slice += padded_vol[:, y + i, :] * kernel[i]
         __vol__[:, y, :] = tmp_slice
@@ -286,7 +286,7 @@ def no_OF_filter_along_X(kernel, mean):
     padded_vol[:, :, kernel.size//2:shape_of_vol[2] + kernel.size//2] = __vol__
     X_dim = __vol__.shape[2]
     for x in range(X_dim):
-        tmp_slice = np.zeros_like(vol[:, :, x]).astype(np.float32)
+        tmp_slice = np.zeros_like(__vol__[:, :, x]).astype(np.float32)
         for i in range(kernel.size):
             tmp_slice += padded_vol[:, :, x + i]*kernel[i]
         __vol__[:, :, x] = tmp_slice
