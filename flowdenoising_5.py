@@ -289,11 +289,12 @@ def no_OF_filter_along_X_slice(x, chunk_shape, padded_chunk, kernel):
         tmp_slice += padded_chunk[:, :, x + i]*kernel[i]
     __vol__[:, :, x] = tmp_slice
     #__percent__ = int(100*(x/X_dim))
-    return x
 
-def no_OF_filter_along_X_chunk(X_dim, i, chunk, padded_chunk, kernel):
+def no_OF_filter_along_X_chunk(i, chunk, padded_chunk, kernel):
+    X_dim = chunk.shape[2]
     for x in range(X_dim//__number_of_CPUs__):
         no_OF_filter_along_X_slice(x*__number_of_CPUs__+i, chunk.shape, padded_chunk, kernel)
+    return i
 
 def no_OF_filter_along_X(chunk, kernel, mean):
     global __percent__
@@ -307,15 +308,15 @@ def no_OF_filter_along_X(chunk, kernel, mean):
     padded_chunk[:, :, kernel.size//2:chunk.shape[2] + kernel.size//2] = chunk
     X_dim = chunk.shape[2]
 
-    chunk_shapes = [chunk.shape]*__number_of_CPUs__
+    #for i in range(__number_of_CPUs__):
+    #    no_OF_filter_along_X_chunk(i, chunk, padded_chunk, kernel)
+    chunks = [chunk]*__number_of_CPUs__
     padded_chunks = [padded_chunk]*__number_of_CPUs__
     kernels = [kernel]*__number_of_CPUs__
-    for i in range(__number_of_CPUs__):
-        no_OF_filter_along_X_chunk(X_dim, i, chunk, padded_chunk, kernel)
-        #slice_indexes = [x*__number_of_CPUs__+i for i in range(__number_of_CPUs__)]
-        #with ProcessPoolExecutor(max_workers=__number_of_CPUs__) as executor:
-        #    for _ in executor.map(no_OF_filter_along_X_slice, slice_indexes, chunk_shapes, padded_chunks, kernels):
-        #        print(_)
+    chunk_indexes = [i for i in range(__number_of_CPUs__)]
+    with ProcessPoolExecutor(max_workers=__number_of_CPUs__) as executor:
+        for _ in executor.map(no_OF_filter_along_X_chunk, chunk_indexes, chunks, padded_chunks, kernels):
+            print(_)
     if __debug__:
         time_1 = time.process_time()
         logging.debug(f"Filtering along X spent {time_1 - time_0} seconds")
