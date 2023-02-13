@@ -72,59 +72,99 @@ def get_flow(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIDE, prev_flow=None):
         logging.debug(f"OF computed in {1000*(time_1 - time_0):4.3f} ms, max_X={np.max(flow[0]):+3.2f}, min_X={np.min(flow[0]):+3.2f}, max_Y={np.max(flow[1]):+3.2f}, min_Y={np.min(flow[1]):+3.2f}")
     return flow
 
+def OF_filter_along_Z_slice(z, padded_vol, kernel):
+    tmp_slice = np.zeros_like(__vol__[z, :, :]).astype(np.float32)
+    assert kernel.size % 2 != 0 # kernel.size must be odd
+    prev_flow = np.zeros(shape=(__vol__.shape[1], __vol__.shape[2], 2), dtype=np.float32)
+    for i in range((kernel.size//2) - 1, -1, -1):
+        flow = get_flow(padded_vol[z + i, :, :], __vol__[z, :, :], l, w, prev_flow)
+        prev_flow = flow
+        OF_compensated_slice = warp_slice(padded_vol[z + i, :, :], flow)
+        tmp_slice += OF_compensated_slice * kernel[i]
+    tmp_slice += __vol__[z, :, :] * kernel[kernel.size//2]
+    prev_flow = np.zeros(shape=(__vol__.shape[1], __vol__.shape[2], 2), dtype=np.float32)
+    for i in range(kernel.size//2+1, kernel.size):
+        flow = get_flow(padded_vol[z + i, :, :], __vol__[z, :, :], l, w, prev_flow)
+        prev_flow = flow
+        OF_compensated_slice = warp_slice(padded_vol[z + i, :, :], flow)
+        tmp_slice += OF_compensated_slice * kernel[i]
+    __vol__[z, :, :] = tmp_slice
+    #__percent__ = int(100*(z/Z_dim))
+
+def OF_filter_along_Z_chunk(i, padded_vol, kernel):
+    Z_dim = __vol__.shape[0]
+    for z in range(Z_dim//__number_of_CPUs__):
+        # Notice that the slices of a chunk are not contiguous
+        OF_filter_along_Z_slice(z*__number_of_CPUs__ + i,
+                                padded_vol,
+                                kernel)
+    for z in range(Z_dim % __number_of_CPUs__):
+        OF_filter_along_Z_slice(z*__number_of_CPUs__ + i,
+                                padded_vol,
+                                kernel)
+    return i
+
 def OF_filter_along_Z(kernel, l, w, mean):
     global __percent__
     logging.info(f"Filtering along Z with l={l}, w={w}, and kernel length={kernel.size}")
+
     if __debug__:
         time_0 = time.process_time()
         min_OF = 1000
-        max_OF = -1000 
-    #filtered_vol = np.zeros_like(__vol__).astype(np.float32)
+        max_OF = -1000
+
     shape_of_vol = np.shape(__vol__)
     padded_vol = np.full(shape=(shape_of_vol[0] + kernel.size, shape_of_vol[1], shape_of_vol[2]), fill_value=mean)
     padded_vol[kernel.size//2:shape_of_vol[0] + kernel.size//2, :, :] = __vol__
-    Z_dim = __vol__.shape[0]
-    for z in range(Z_dim):
-        tmp_slice = np.zeros_like(__vol__[z]).astype(np.float32)
-        assert kernel.size % 2 != 0 # kernel.size must be odd
-        prev_flow = np.zeros(shape=(shape_of_vol[1], shape_of_vol[2], 2), dtype=np.float32)
-        for i in range((kernel.size//2) - 1, -1, -1):
-            #print(i)
-            flow = get_flow(padded_vol[z + i, :, :], __vol__[z, :, :], l, w, prev_flow)
-            prev_flow = flow
-            if __debug__:
-                min_OF_iter = np.min(flow)
-                if min_OF_iter < min_OF:
-                    min_OF = min_OF_iter
-                max_OF_iter = np.max(flow)
-                if max_OF < max_OF_iter:
-                    max_OF = max_OF_iter
-            OF_compensated_slice = warp_slice(padded_vol[z + i, :, :], flow)
-            tmp_slice += OF_compensated_slice * kernel[i]
-        tmp_slice += __vol__[z, :, :] * kernel[kernel.size//2]
-        prev_flow = np.zeros(shape=(shape_of_vol[1], shape_of_vol[2], 2), dtype=np.float32)
-        for i in range(kernel.size//2+1, kernel.size):
-            #print(i)
-            flow = get_flow(padded_vol[z + i, :, :], __vol__[z, :, :], l, w, prev_flow)
-            prev_flow = flow
-            if __debug__:
-                min_OF_iter = np.min(flow)
-                if min_OF_iter < min_OF:
-                    min_OF = min_OF_iter
-                max_OF_iter = np.max(flow)
-                if max_OF < max_OF_iter:
-                    max_OF = max_OF_iter
-            OF_compensated_slice = warp_slice(padded_vol[z + i, :, :], flow)
-            tmp_slice += OF_compensated_slice * kernel[i]
-        #filtered_vol[z, :, :] = tmp_slice
-        __vol__[z, :, :] = tmp_slice
-        __percent__ = int(100*(z/Z_dim))
+    #for i in range(__number_of_CPUs__):
+    #    OF_filter_along_Z_chunk(i, padded_vol, kernel)
+    vol_indexes = [i for i in range(__number_of_CPUs__)]
+    padded_vols = [padded_vol]*__number_of_CPUs__
+    kernels = [kernel]*__number_of_CPUs__
+    with ProcessPoolExecutor(max_workers=__number_of_CPUs__) as executor:
+        for _ in executor.map(OF_filter_along_Z_chunk,
+                              vol_indexes,
+                              padded_vols,
+                              kernels):
+            print(_)
+
     if __debug__:
         time_1 = time.process_time()
         logging.debug(f"Filtering along Z spent {time_1 - time_0} seconds")
         logging.debug(f"Min OF val: {min_OF}")
         logging.debug(f"Max OF val: {max_OF}")
-    #return filtered_vol
+
+def OF_filter_along_Y_slice(y, padded_vol, kernel):
+    tmp_slice = np.zeros_like(__vol__[:, y, :]).astype(np.float32)
+    assert kernel.size % 2 != 0 # kernel.size must be odd
+    prev_flow = np.zeros(shape=(__vol__.shape[0], __vol__.shape[2], 2), dtype=np.float32)
+    for i in range((kernel.size//2) - 1, -1, -1):
+        flow = get_flow(padded_vol[:, y + i, :], __vol__[:, y, :], l, w, prev_flow)
+        prev_flow = flow
+        OF_compensated_slice = warp_slice(padded_vol[:, y + i, :], flow)
+        tmp_slice += OF_compensated_slice * kernel[i]
+    tmp_slice += __vol__[:, y, :] * kernel[kernel.size//2]
+    prev_flow = np.zeros(shape=(__vol__.shape[0], __vol__.shape[2], 2), dtype=np.float32)
+    for i in range(kernel.size//2+1, kernel.size):
+        flow = get_flow(padded_vol[:, y + i, :], __vol__[:, y, :], l, w, prev_flow)
+        prev_flow = flow
+        OF_compensated_slice = warp_slice(padded_vol[:, y + i, :], flow)
+        tmp_slice += OF_compensated_slice * kernel[i]
+    __vol__[:, y, :] = tmp_slice
+    #__percent__ = int(100*(y/Y_dim))
+
+def OF_filter_along_Y_chunk(i, padded_vol, kernel):
+    Y_dim = __vol__.shape[1]
+    for y in range(Y_dim//__number_of_CPUs__):
+        # Notice that the slices of a chunk are not contiguous
+        OF_filter_along_Y_slice(y*__number_of_CPUs__ + i,
+                                padded_vol,
+                                kernel)
+    for y in range(Y_dim % __number_of_CPUs__):
+        OF_filter_along_Y_slice(y*__number_of_CPUs__ + i,
+                                padded_vol,
+                                kernel)
+    return i
 
 def OF_filter_along_Y(kernel, l, w, mean):
     global __percent__
@@ -133,54 +173,59 @@ def OF_filter_along_Y(kernel, l, w, mean):
         time_0 = time.process_time()
         min_OF = 1000
         max_OF = -1000 
-    #filtered_vol = np.zeros_like(vol).astype(np.float32)
     shape_of_vol = np.shape(__vol__)
     padded_vol = np.full(shape=(shape_of_vol[0], shape_of_vol[1] + kernel.size, shape_of_vol[2]), fill_value=mean)
     padded_vol[:, kernel.size//2:shape_of_vol[1] + kernel.size//2, :] = __vol__
-    Y_dim = __vol__.shape[1]
-    #prev_flow = None
-    for y in range(Y_dim):
-        tmp_slice = np.zeros_like(__vol__[:, y, :]).astype(np.float32)
-        assert kernel.size % 2 != 0 # kernel.size must be odd
-        prev_flow = np.zeros(shape=(shape_of_vol[0], shape_of_vol[2], 2), dtype=np.float32)
-        for i in range((kernel.size//2) - 1, -1, -1):
-            #print(i)
-            flow = get_flow(padded_vol[:, y + i, :], __vol__[:, y, :], l, w, prev_flow)
-            prev_flow = flow
-            if __debug__:
-                min_OF_iter = np.min(flow)
-                if min_OF_iter < min_OF:
-                    min_OF = min_OF_iter
-                max_OF_iter = np.max(flow)
-                if max_OF < max_OF_iter:
-                    max_OF = max_OF_iter                        
-            OF_compensated_slice = warp_slice(padded_vol[:, y + i, :], flow)
-            tmp_slice += OF_compensated_slice * kernel[i]
-        tmp_slice += __vol__[:, y, :] * kernel[kernel.size//2]
-        prev_flow = np.zeros(shape=(shape_of_vol[0], shape_of_vol[2], 2), dtype=np.float32)
-        for i in range(kernel.size//2+1, kernel.size):
-            #print(i)
-            flow = get_flow(padded_vol[:, y + i, :], __vol__[:, y, :], l, w, prev_flow)
-            prev_flow = flow
-            if __debug__:
-                min_OF_iter = np.min(flow)
-                if min_OF_iter < min_OF:
-                    min_OF = min_OF_iter
-                max_OF_iter = np.max(flow)
-                if max_OF < max_OF_iter:
-                    max_OF = max_OF_iter                        
-            OF_compensated_slice = warp_slice(padded_vol[:, y + i, :], flow)
-            tmp_slice += OF_compensated_slice * kernel[i]
-        #filtered_vol[:, y, :] = tmp_slice
-        __vol__[:, y, :] = tmp_slice
-        __percent__ = int(100*(y/Y_dim))
+    #for i in range(__number_of_CPUs__):
+    #    OF_filter_along_Y_chunk(i, padded_vol, kernel)
+    vol_indexes = [i for i in range(__number_of_CPUs__)]
+    padded_vols = [padded_vol]*__number_of_CPUs__
+    kernels = [kernel]*__number_of_CPUs__
+    with ProcessPoolExecutor(max_workers=__number_of_CPUs__) as executor:
+        for _ in executor.map(OF_filter_along_Y_chunk,
+                              vol_indexes,
+                              padded_vols,
+                              kernels):
+            print(_)
+
     if __debug__:
         time_1 = time.process_time()
         logging.debug(f"Filtering along Y spent {time_1 - time_0} seconds")
         logging.debug(f"Min OF val: {min_OF}")
         logging.debug(f"Max OF val: {max_OF}")
-    #return filtered_vol
 
+def OF_filter_along_X_slice(x, padded_vol, kernel):
+    tmp_slice = np.zeros_like(__vol__[:, :, x]).astype(np.float32)
+    assert kernel.size % 2 != 0 # kernel.size must be odd
+    prev_flow = np.zeros(shape=(__vol__.shape[0], __vol__.shape[1], 2), dtype=np.float32)
+    for i in range((kernel.size//2) - 1, -1, -1):
+        flow = get_flow(padded_vol[:, :, x + i], __vol__[:, :, x], l, w, prev_flow)
+        prev_flow = flow
+        OF_compensated_slice = warp_slice(padded_vol[:, :, x + i], flow)
+        tmp_slice += OF_compensated_slice * kernel[i]
+    tmp_slice += __vol__[:, :, x] * kernel[kernel.size//2]
+    prev_flow = np.zeros(shape=(__vol__.shape[0], __vol__.shape[1], 2), dtype=np.float32)
+    for i in range(kernel.size//2+1, kernel.size):
+        flow = get_flow(padded_vol[:, :, x + i], __vol__[:, :, x], l, w, prev_flow)
+        prev_flow = flow
+        OF_compensated_slice = warp_slice(padded_vol[:, :, x + i], flow)
+        tmp_slice += OF_compensated_slice * kernel[i]
+    __vol__[:, :, x] = tmp_slice
+    #__percent__ = int(100*(x/X_dim))
+
+def OF_filter_along_X_chunk(i, padded_vol, kernel):
+    X_dim = __vol__.shape[2]
+    for x in range(X_dim//__number_of_CPUs__):
+        # Notice that the slices of a chunk are not contiguous
+        OF_filter_along_X_slice(x*__number_of_CPUs__ + i,
+                                padded_vol,
+                                kernel)
+    for x in range(X_dim % __number_of_CPUs__):
+        OF_filter_along_X_slice(x*__number_of_CPUs__ + i,
+                                padded_vol,
+                                kernel)
+    return i
+    
 def OF_filter_along_X(kernel, l, w, mean):
     global __percent__
     logging.info(f"Filtering along X with l={l}, w={w}, and kernel length={kernel.size}")
@@ -188,53 +233,25 @@ def OF_filter_along_X(kernel, l, w, mean):
         time_0 = time.process_time()
         min_OF = 1000
         max_OF = -1000
-    #filtered_vol = np.zeros_like(__vol__).astype(np.float32) # Quitar
     shape_of_vol = np.shape(__vol__)
     padded_vol = np.full(shape=(shape_of_vol[0], shape_of_vol[1], shape_of_vol[2] + kernel.size), fill_value=mean)
     padded_vol[:, :, kernel.size//2:shape_of_vol[2] + kernel.size//2] = __vol__
-    X_dim = __vol__.shape[2]
-    #prev_flow = None
-    for x in range(X_dim):
-        tmp_slice = np.zeros_like(__vol__[:, :, x]).astype(np.float32)
-        assert kernel.size % 2 != 0 # kernel.size must be odd
-        prev_flow = np.zeros(shape=(shape_of_vol[0], shape_of_vol[1], 2), dtype=np.float32)
-        for i in range((kernel.size//2) - 1, -1, -1):
-            #print(i)
-            flow = get_flow(padded_vol[:, :, x + i], __vol__[:, :, x], l, w, prev_flow)
-            prev_flow = flow
-            if __debug__:
-                min_OF_iter = np.min(flow)
-                if min_OF_iter < min_OF:
-                    min_OF = min_OF_iter
-                max_OF_iter = np.max(flow)
-                if max_OF < max_OF_iter:
-                    max_OF = max_OF_iter
-            OF_compensated_slice = warp_slice(padded_vol[:, :, x + i], flow)
-            tmp_slice += OF_compensated_slice * kernel[i]
-        tmp_slice += __vol__[:, :, x] * kernel[kernel.size//2]
-        prev_flow = np.zeros(shape=(shape_of_vol[0], shape_of_vol[1], 2), dtype=np.float32)
-        for i in range(kernel.size//2+1, kernel.size):
-            #print(i)
-            flow = get_flow(padded_vol[:, :, x + i], __vol__[:, :, x], l, w, prev_flow)
-            prev_flow = flow
-            if __debug__:
-                min_OF_iter = np.min(flow)
-                if min_OF_iter < min_OF:
-                    min_OF = min_OF_iter
-                max_OF_iter = np.max(flow)
-                if max_OF < max_OF_iter:
-                    max_OF = max_OF_iter
-            OF_compensated_slice = warp_slice(padded_vol[:, :, x + i], flow)
-            tmp_slice += OF_compensated_slice * kernel[i]
-        #filtered_vol[:, :, x] = tmp_slice
-        __vol__[:, :, x] = tmp_slice
-        __percent__ = int(100*(x/X_dim))
+    #for i in range(__number_of_CPUs__):
+    #    OF_filter_along_X_chunk(i, padded_vol, kernel)
+    vol_indexes = [i for i in range(__number_of_CPUs__)]
+    padded_vols = [padded_vol]*__number_of_CPUs__
+    kernels = [kernel]*__number_of_CPUs__
+    with ProcessPoolExecutor(max_workers=__number_of_CPUs__) as executor:
+        for _ in executor.map(OF_filter_along_X_chunk,
+                              vol_indexes,
+                              padded_vols,
+                              kernels):
+            print(_)
+
     if __debug__:
         time_1 = time.process_time()
         logging.debug(f"Filtering along X spent {time_1 - time_0} seconds")
-    #return filtered_vol
 
-# Quitar todos los filtered_vol* y vol
 def OF_filter(kernels, l, w):
     mean = __vol__.mean()
     OF_filter_along_Z(kernels[0], l, w, mean)
@@ -280,7 +297,7 @@ def no_OF_filter_along_Z(kernel, mean):
     padded_vol[kernel.size//2:__vol__.shape[0] + kernel.size//2, ...] = __vol__
 
     #for i in range(__number_of_CPUs__):
-    #    no_OF_filter_along_Z_chunk(i, __vol__, padded_vol, kernel)
+    #    no_OF_filter_along_Z_chunk(i, padded_vol, kernel)
     vol_indexes = [i for i in range(__number_of_CPUs__)]
     padded_vols = [padded_vol]*__number_of_CPUs__
     kernels = [kernel]*__number_of_CPUs__
