@@ -278,7 +278,7 @@ def no_OF_filter_along_Z_chunk(i, padded_vol, kernel):
                                    padded_vol,
                                    kernel)
     for z in range(Z_dim % __number_of_CPUs__):
-        no_OF_filter_along_Y_slice(z*__number_of_CPUs__ + i,
+        no_OF_filter_along_Z_slice(z*__number_of_CPUs__ + i,
                                    padded_vol,
                                    kernel)
     return i
