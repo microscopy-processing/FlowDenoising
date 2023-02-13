@@ -459,6 +459,9 @@ parser.add_argument("-v", "--verbosity", type=int_or_str,
 parser.add_argument("-n", "--no_OF", action="store_true", help="Disable optical flow compensation")
 parser.add_argument("-m", "--memory_map", action="store_true", help="Enable memory-mapping (see https://mrcfile.readthedocs.io/en/stable/usage_guide.html#dealing-with-large-files, only for MRC files)")
 
+def show_memory_usage(msg=''):
+    logging.info(f"{psutil.Process(os.getpid()).memory_info().rss/(1024*1024):.1f} MB used in process {os.getpid()} {msg}")
+
 if __name__ == "__main__":
 
     parser.description = __doc__
@@ -502,6 +505,8 @@ if __name__ == "__main__":
         __vol__ = vol_MRC.data
     else:
         __vol__ = skimage.io.imread(args.input, plugin="tifffile").astype(np.float32)
+    size = __vol__.dtype.itemsize * __vol__.size
+    logging.info(f"vol requires {size/(1024*1024):.1f} MB")
 
     # Copy to shared memory
     SM_vol = shared_memory.SharedMemory(
