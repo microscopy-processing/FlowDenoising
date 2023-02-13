@@ -263,58 +263,96 @@ def no_OF_filter_along_Z(kernel, mean):
         time_1 = time.process_time()
         logging.debug(f"Filtering along Z spent {time_1 - time_0} seconds")
 
+def no_OF_filter_along_Y_slice(y, padded_vol, kernel):
+    tmp_slice = np.zeros(shape=(__vol__.shape[0], __vol__.shape[2]),
+                         dtype=np.float32)
+    for i in range(kernel.size):
+        tmp_slice += padded_vol[:, y + i, :] * kernel[i]
+    __vol__[:, y, :] = tmp_slice
+    #__percent__ = int(100*(y/Y_dim))
+        
+def no_OF_filter_along_Y_chunk(i, padded_vol, kernel):
+    Y_dim = __vol__.shape[1]
+    for y in range(Y_dim//__number_of_CPUs__):
+        # Notice that the slices of a chunk are not contiguous
+        no_OF_filter_along_Y_slice(y*__number_of_CPUs__ + i,
+                                   padded_vol,
+                                   kernel)
+    for y in range(Y_dim % __number_of_CPUs__):
+        no_OF_filter_along_Y_slice(y*__number_of_CPUs__ + i,
+                                   padded_vol,
+                                   kernel)
+    return i
+
 def no_OF_filter_along_Y(kernel, mean):
     global __percent__
     logging.info(f"Filtering along Y with kernel length={kernel.size}")
     if __debug__:
         time_0 = time.process_time()
-    shape_of_vol = np.shape(__vol__)
-    padded_vol = np.full(shape=(shape_of_vol[0], shape_of_vol[1] + kernel.size, shape_of_vol[2]), fill_value=mean)
-    padded_vol[:, kernel.size//2:shape_of_vol[1] + kernel.size//2, :] = __vol__
-    Y_dim = __vol__.shape[1]
-    for y in range(Y_dim):
-        tmp_slice = np.zeros_like(__vol__[:, y, :]).astype(np.float32)
-        for i in range(kernel.size):
-            tmp_slice += padded_vol[:, y + i, :] * kernel[i]
-        __vol__[:, y, :] = tmp_slice
-        __percent__ = int(100*(y/Y_dim))
+    padded_vol = np.full(shape=(__vol__.shape[0],
+                                __vol__.shape[1] + kernel.size,
+                                __vol__.shape[2]),
+                         fill_value=mean)
+    padded_vol[:, kernel.size//2:__vol__.shape[1] + kernel.size//2, :] = __vol__
+
+    #for i in range(__number_of_CPUs__):
+    #    no_OF_filter_along_Y_chunk(i, __vol__, padded_vol, kernel)
+    vol_indexes = [i for i in range(__number_of_CPUs__)]
+    padded_vols = [padded_vol]*__number_of_CPUs__
+    kernels = [kernel]*__number_of_CPUs__
+    with ProcessPoolExecutor(max_workers=__number_of_CPUs__) as executor:
+        for _ in executor.map(no_OF_filter_along_Y_chunk,
+                              vol_indexes,
+                              padded_vols,
+                              kernels):
+            print(_)
+
     if __debug__:
         time_1 = time.process_time()
         logging.debug(f"Filtering along Y spent {time_1 - time_0} seconds")
 
-def no_OF_filter_along_X_slice(x, chunk_shape, padded_chunk, kernel):
-    tmp_slice = np.zeros(shape=(chunk_shape[0], chunk_shape[1]),
+def no_OF_filter_along_X_slice(x, padded_vol, kernel):
+    tmp_slice = np.zeros(shape=(__vol__.shape[0], __vol__.shape[1]),
                          dtype=np.float32)
     for i in range(kernel.size):
-        tmp_slice += padded_chunk[:, :, x + i]*kernel[i]
+        tmp_slice += padded_vol[:, :, x + i]*kernel[i]
     __vol__[:, :, x] = tmp_slice
     #__percent__ = int(100*(x/X_dim))
 
-def no_OF_filter_along_X_chunk(i, chunk, padded_chunk, kernel):
-    X_dim = chunk.shape[2]
+def no_OF_filter_along_X_chunk(i, padded_vol, kernel):
+    X_dim = __vol__.shape[2]
     for x in range(X_dim//__number_of_CPUs__):
-        no_OF_filter_along_X_slice(x*__number_of_CPUs__ + i, chunk.shape, padded_chunk, kernel)
+        # Notice that the slices of a chunk are not contiguous
+        no_OF_filter_along_X_slice(x*__number_of_CPUs__ + i,
+                                   padded_vol,
+                                   kernel)
+    for x in range(X_dim % __number_of_CPUs__):
+        no_OF_filter_along_X_slice(x*__number_of_CPUs__ + i,
+                                   padded_vol,
+                                   kernel)
     return i
 
-def no_OF_filter_along_X(chunk, kernel, mean):
+def no_OF_filter_along_X(kernel, mean):
     global __percent__
     logging.info(f"Filtering along X with kernel length={kernel.size}")
     if __debug__:
         time_0 = time.process_time()
-    padded_chunk = np.full(shape=(chunk.shape[0],
-                                  chunk.shape[1],
-                                  chunk.shape[2] + kernel.size),
-                           fill_value=mean)
-    padded_chunk[:, :, kernel.size//2:chunk.shape[2] + kernel.size//2] = chunk
+    padded_vol = np.full(shape=(__vol__.shape[0],
+                                __vol__.shape[1],
+                                __vol__.shape[2] + kernel.size),
+                         fill_value=mean)
+    padded_vol[:, :, kernel.size//2:__vol__.shape[2] + kernel.size//2] = __vol__
 
     #for i in range(__number_of_CPUs__):
-    #    no_OF_filter_along_X_chunk(i, chunk, padded_chunk, kernel)
-    chunks = [chunk]*__number_of_CPUs__
-    padded_chunks = [padded_chunk]*__number_of_CPUs__
+    #    no_OF_filter_along_X_chunk(i, __vol__, padded_vol, kernel)
+    vol_indexes = [i for i in range(__number_of_CPUs__)]
+    padded_vols = [padded_vol]*__number_of_CPUs__
     kernels = [kernel]*__number_of_CPUs__
-    chunk_indexes = [i for i in range(__number_of_CPUs__)]
     with ProcessPoolExecutor(max_workers=__number_of_CPUs__) as executor:
-        for _ in executor.map(no_OF_filter_along_X_chunk, chunk_indexes, chunks, padded_chunks, kernels):
+        for _ in executor.map(no_OF_filter_along_X_chunk,
+                              vol_indexes,
+                              padded_vols,
+                              kernels):
             print(_)
     if __debug__:
         time_1 = time.process_time()
@@ -324,7 +362,7 @@ def no_OF_filter(kernels):
     mean = __vol__.mean()
     no_OF_filter_along_Z(kernels[0], mean)
     no_OF_filter_along_Y(kernels[1], mean)
-    no_OF_filter_along_X(__vol__, kernels[2], mean)
+    no_OF_filter_along_X(kernels[2], mean)
     #no_OF_filter_along_X(__vol__[: ,: ,:__vol__.shape[2]//2 + kernel[2].size//2], kernel[2], mean)
     #no_OF_filter_along_X(__vol__[: ,: ,__vol__.shape[2]//2 - kernel[2].size//2:], kernel[2], mean)
     
@@ -419,12 +457,12 @@ if __name__ == "__main__":
         create=True,
         size=__vol__.size*__vol__.dtype.itemsize,
         name="vol") # /dev/shm/vol
-    vol = np.ndarray(
+    np_vol = np.ndarray(
         shape=__vol__.shape,
         dtype=__vol__.dtype,
         buffer=SM_vol.buf)
-    vol[...] = __vol__[...]
-    __vol__ = vol
+    np_vol[...] = __vol__[...]
+    __vol__ = np_vol
 
     logging.info(f"shape of the input volume (Z, Y, X) = {__vol__.shape}")
     logging.info(f"type of the volume = {__vol__.dtype}")
