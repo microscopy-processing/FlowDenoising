@@ -181,7 +181,7 @@ def OF_filter_along_Y(kernel, l, w, mean):
         logging.debug(f"Max OF val: {max_OF}")
     #return filtered_vol
 
-def OF_filter_along_X(vol, kernel, l, w, mean):
+def OF_filter_along_X(kernel, l, w, mean):
     global __percent__
     logging.info(f"Filtering along X with l={l}, w={w}, and kernel length={kernel.size}")
     if __debug__:
@@ -211,7 +211,7 @@ def OF_filter_along_X(vol, kernel, l, w, mean):
                     max_OF = max_OF_iter
             OF_compensated_slice = warp_slice(padded_vol[:, :, x + i], flow)
             tmp_slice += OF_compensated_slice * kernel[i]
-        tmp_slice += vol[:, :, x] * kernel[kernel.size//2]
+        tmp_slice += __vol__[:, :, x] * kernel[kernel.size//2]
         prev_flow = np.zeros(shape=(shape_of_vol[0], shape_of_vol[1], 2), dtype=np.float32)
         for i in range(kernel.size//2+1, kernel.size):
             #print(i)
@@ -241,7 +241,7 @@ def OF_filter(kernels, l, w):
     print("__vol__.mean after Z =", __vol__.mean())
     OF_filter_along_Y(kernels[1], l, w, mean)
     print("__vol__.mean() after Y =", __vol__.mean())
-    #filtered_vol_ZYX = OF_filter_along_X(filtered_vol_ZY, kernels[2], l, w, mean)
+    OF_filter_along_X(kernels[2], l, w, mean)
 
 ###############################################################
 
