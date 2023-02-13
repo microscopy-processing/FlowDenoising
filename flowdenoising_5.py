@@ -72,26 +72,25 @@ def get_flow(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIDE, prev_flow=None):
         logging.debug(f"OF computed in {1000*(time_1 - time_0):4.3f} ms, max_X={np.max(flow[0]):+3.2f}, min_X={np.min(flow[0]):+3.2f}, max_Y={np.max(flow[1]):+3.2f}, min_Y={np.min(flow[1]):+3.2f}")
     return flow
 
-def OF_filter_along_Z(vol, kernel, l, w, mean):
+def OF_filter_along_Z(kernel, l, w, mean):
     global __percent__
     logging.info(f"Filtering along Z with l={l}, w={w}, and kernel length={kernel.size}")
     if __debug__:
         time_0 = time.process_time()
         min_OF = 1000
         max_OF = -1000 
-    filtered_vol = np.zeros_like(vol).astype(np.float32)
-    shape_of_vol = np.shape(vol)
-    #padded_vol = np.zeros(shape=(shape_of_vol[0] + kernel.size, shape_of_vol[1], shape_of_vol[2]))
+    #filtered_vol = np.zeros_like(__vol__).astype(np.float32)
+    shape_of_vol = np.shape(__vol__)
     padded_vol = np.full(shape=(shape_of_vol[0] + kernel.size, shape_of_vol[1], shape_of_vol[2]), fill_value=mean)
-    padded_vol[kernel.size//2:shape_of_vol[0] + kernel.size//2, :, :] = vol
-    Z_dim = vol.shape[0]
+    padded_vol[kernel.size//2:shape_of_vol[0] + kernel.size//2, :, :] = __vol__
+    Z_dim = __vol__.shape[0]
     for z in range(Z_dim):
-        tmp_slice = np.zeros_like(vol[z]).astype(np.float32)
+        tmp_slice = np.zeros_like(__vol__[z]).astype(np.float32)
         assert kernel.size % 2 != 0 # kernel.size must be odd
         prev_flow = np.zeros(shape=(shape_of_vol[1], shape_of_vol[2], 2), dtype=np.float32)
         for i in range((kernel.size//2) - 1, -1, -1):
             #print(i)
-            flow = get_flow(padded_vol[z + i, :, :], vol[z, :, :], l, w, prev_flow)
+            flow = get_flow(padded_vol[z + i, :, :], __vol__[z, :, :], l, w, prev_flow)
             prev_flow = flow
             if __debug__:
                 min_OF_iter = np.min(flow)
@@ -102,11 +101,11 @@ def OF_filter_along_Z(vol, kernel, l, w, mean):
                     max_OF = max_OF_iter
             OF_compensated_slice = warp_slice(padded_vol[z + i, :, :], flow)
             tmp_slice += OF_compensated_slice * kernel[i]
-        tmp_slice += vol[z, :, :] * kernel[kernel.size//2]
+        tmp_slice += __vol__[z, :, :] * kernel[kernel.size//2]
         prev_flow = np.zeros(shape=(shape_of_vol[1], shape_of_vol[2], 2), dtype=np.float32)
         for i in range(kernel.size//2+1, kernel.size):
             #print(i)
-            flow = get_flow(padded_vol[z + i, :, :], vol[z, :, :], l, w, prev_flow)
+            flow = get_flow(padded_vol[z + i, :, :], __vol__[z, :, :], l, w, prev_flow)
             prev_flow = flow
             if __debug__:
                 min_OF_iter = np.min(flow)
@@ -117,36 +116,36 @@ def OF_filter_along_Z(vol, kernel, l, w, mean):
                     max_OF = max_OF_iter
             OF_compensated_slice = warp_slice(padded_vol[z + i, :, :], flow)
             tmp_slice += OF_compensated_slice * kernel[i]
-        filtered_vol[z, :, :] = tmp_slice
+        #filtered_vol[z, :, :] = tmp_slice
+        __vol__[z, :, :] = tmp_slice
         __percent__ = int(100*(z/Z_dim))
     if __debug__:
         time_1 = time.process_time()
         logging.debug(f"Filtering along Z spent {time_1 - time_0} seconds")
         logging.debug(f"Min OF val: {min_OF}")
         logging.debug(f"Max OF val: {max_OF}")
-    return filtered_vol
+    #return filtered_vol
 
-def OF_filter_along_Y(vol, kernel, l, w, mean):
+def OF_filter_along_Y(kernel, l, w, mean):
     global __percent__
     logging.info(f"Filtering along Y with l={l}, w={w}, and kernel length={kernel.size}")
     if __debug__:
         time_0 = time.process_time()
         min_OF = 1000
         max_OF = -1000 
-    filtered_vol = np.zeros_like(vol).astype(np.float32)
-    shape_of_vol = np.shape(vol)
-    #padded_vol = np.zeros(shape=(shape_of_vol[0], shape_of_vol[1] + kernel.size, shape_of_vol[2]))
+    #filtered_vol = np.zeros_like(vol).astype(np.float32)
+    shape_of_vol = np.shape(__vol__)
     padded_vol = np.full(shape=(shape_of_vol[0], shape_of_vol[1] + kernel.size, shape_of_vol[2]), fill_value=mean)
-    padded_vol[:, kernel.size//2:shape_of_vol[1] + kernel.size//2, :] = vol
-    Y_dim = vol.shape[1]
+    padded_vol[:, kernel.size//2:shape_of_vol[1] + kernel.size//2, :] = __vol__
+    Y_dim = __vol__.shape[1]
     #prev_flow = None
     for y in range(Y_dim):
-        tmp_slice = np.zeros_like(vol[:, y, :]).astype(np.float32)
+        tmp_slice = np.zeros_like(__vol__[:, y, :]).astype(np.float32)
         assert kernel.size % 2 != 0 # kernel.size must be odd
         prev_flow = np.zeros(shape=(shape_of_vol[0], shape_of_vol[2], 2), dtype=np.float32)
         for i in range((kernel.size//2) - 1, -1, -1):
             #print(i)
-            flow = get_flow(padded_vol[:, y + i, :], vol[:, y, :], l, w, prev_flow)
+            flow = get_flow(padded_vol[:, y + i, :], __vol__[:, y, :], l, w, prev_flow)
             prev_flow = flow
             if __debug__:
                 min_OF_iter = np.min(flow)
@@ -157,11 +156,11 @@ def OF_filter_along_Y(vol, kernel, l, w, mean):
                     max_OF = max_OF_iter                        
             OF_compensated_slice = warp_slice(padded_vol[:, y + i, :], flow)
             tmp_slice += OF_compensated_slice * kernel[i]
-        tmp_slice += vol[:, y, :] * kernel[kernel.size//2]
+        tmp_slice += __vol__[:, y, :] * kernel[kernel.size//2]
         prev_flow = np.zeros(shape=(shape_of_vol[0], shape_of_vol[2], 2), dtype=np.float32)
         for i in range(kernel.size//2+1, kernel.size):
             #print(i)
-            flow = get_flow(padded_vol[:, y + i, :], vol[:, y, :], l, w, prev_flow)
+            flow = get_flow(padded_vol[:, y + i, :], __vol__[:, y, :], l, w, prev_flow)
             prev_flow = flow
             if __debug__:
                 min_OF_iter = np.min(flow)
@@ -172,14 +171,15 @@ def OF_filter_along_Y(vol, kernel, l, w, mean):
                     max_OF = max_OF_iter                        
             OF_compensated_slice = warp_slice(padded_vol[:, y + i, :], flow)
             tmp_slice += OF_compensated_slice * kernel[i]
-        filtered_vol[:, y, :] = tmp_slice
+        #filtered_vol[:, y, :] = tmp_slice
+        __vol__[:, y, :] = tmp_slice
         __percent__ = int(100*(y/Y_dim))
     if __debug__:
         time_1 = time.process_time()
         logging.debug(f"Filtering along Y spent {time_1 - time_0} seconds")
         logging.debug(f"Min OF val: {min_OF}")
         logging.debug(f"Max OF val: {max_OF}")
-    return filtered_vol
+    #return filtered_vol
 
 def OF_filter_along_X(vol, kernel, l, w, mean):
     global __percent__
@@ -188,20 +188,19 @@ def OF_filter_along_X(vol, kernel, l, w, mean):
         time_0 = time.process_time()
         min_OF = 1000
         max_OF = -1000
-    filtered_vol = np.zeros_like(vol).astype(np.float32)
-    shape_of_vol = np.shape(vol)
-    #padded_vol = np.zeros(shape=(shape_of_vol[0], shape_of_vol[1], shape_of_vol[2] + kernel.size))
+    #filtered_vol = np.zeros_like(__vol__).astype(np.float32) # Quitar
+    shape_of_vol = np.shape(__vol__)
     padded_vol = np.full(shape=(shape_of_vol[0], shape_of_vol[1], shape_of_vol[2] + kernel.size), fill_value=mean)
-    padded_vol[:, :, kernel.size//2:shape_of_vol[2] + kernel.size//2] = vol
-    X_dim = vol.shape[2]
+    padded_vol[:, :, kernel.size//2:shape_of_vol[2] + kernel.size//2] = __vol__
+    X_dim = __vol__.shape[2]
     #prev_flow = None
     for x in range(X_dim):
-        tmp_slice = np.zeros_like(vol[:, :, x]).astype(np.float32)
+        tmp_slice = np.zeros_like(__vol__[:, :, x]).astype(np.float32)
         assert kernel.size % 2 != 0 # kernel.size must be odd
         prev_flow = np.zeros(shape=(shape_of_vol[0], shape_of_vol[1], 2), dtype=np.float32)
         for i in range((kernel.size//2) - 1, -1, -1):
             #print(i)
-            flow = get_flow(padded_vol[:, :, x + i], vol[:, :, x], l, w, prev_flow)
+            flow = get_flow(padded_vol[:, :, x + i], __vol__[:, :, x], l, w, prev_flow)
             prev_flow = flow
             if __debug__:
                 min_OF_iter = np.min(flow)
@@ -216,7 +215,7 @@ def OF_filter_along_X(vol, kernel, l, w, mean):
         prev_flow = np.zeros(shape=(shape_of_vol[0], shape_of_vol[1], 2), dtype=np.float32)
         for i in range(kernel.size//2+1, kernel.size):
             #print(i)
-            flow = get_flow(padded_vol[:, :, x + i], vol[:, :, x], l, w, prev_flow)
+            flow = get_flow(padded_vol[:, :, x + i], __vol__[:, :, x], l, w, prev_flow)
             prev_flow = flow
             if __debug__:
                 min_OF_iter = np.min(flow)
@@ -227,19 +226,22 @@ def OF_filter_along_X(vol, kernel, l, w, mean):
                     max_OF = max_OF_iter
             OF_compensated_slice = warp_slice(padded_vol[:, :, x + i], flow)
             tmp_slice += OF_compensated_slice * kernel[i]
-        filtered_vol[:, :, x] = tmp_slice
+        #filtered_vol[:, :, x] = tmp_slice
+        __vol__[:, :, x] = tmp_slice
         __percent__ = int(100*(x/X_dim))
     if __debug__:
         time_1 = time.process_time()
         logging.debug(f"Filtering along X spent {time_1 - time_0} seconds")
-    return filtered_vol
+    #return filtered_vol
 
-def OF_filter(vol, kernel, l, w):
-    mean = vol.mean()
-    filtered_vol_Z = OF_filter_along_Z(vol, kernel[0], l, w, mean)
-    filtered_vol_ZY = OF_filter_along_Y(filtered_vol_Z, kernel[1], l, w, mean)
-    filtered_vol_ZYX = OF_filter_along_X(filtered_vol_ZY, kernel[2], l, w, mean)
-    return filtered_vol_ZYX
+# Quitar todos los filtered_vol* y vol
+def OF_filter(kernels, l, w):
+    mean = __vol__.mean()
+    OF_filter_along_Z(kernels[0], l, w, mean)
+    print("__vol__.mean after Z =", __vol__.mean())
+    OF_filter_along_Y(kernels[1], l, w, mean)
+    print("__vol__.mean() after Y =", __vol__.mean())
+    #filtered_vol_ZYX = OF_filter_along_X(filtered_vol_ZY, kernels[2], l, w, mean)
 
 ###############################################################
 
@@ -521,7 +523,7 @@ if __name__ == "__main__":
     if args.no_OF:
         no_OF_filter(kernels)
     else:
-        filtered_vol = OF_filter(vol, kernels, l, w)
+         OF_filter(kernels, l, w)
 
     #filtered_vol = np.transpose(filtered_vol, transpose_pattern)
     logging.info(f"shape of the denoised volume (Z, Y, X) = {__vol__.shape}")
@@ -536,7 +538,7 @@ if __name__ == "__main__":
         time_0 = time.process_time()
 
     logging.debug(f"output = {args.output}")
-        
+
     MRC_output = ( args.output.split('.')[-1] == "MRC" or args.output.split('.')[-1] == "mrc" )
 
     if MRC_output:
@@ -545,7 +547,7 @@ if __name__ == "__main__":
             mrc.set_data(__vol__.astype(np.float32))
             mrc.data
     else:
-        if np.max(filtered_vol) < 256:
+        if np.max(__vol__) < 256:
             logging.debug(f"Writting TIFF file (uint8)")
             skimage.io.imsave(args.output, __vol__.astype(np.uint8), plugin="tifffile")
         else:
