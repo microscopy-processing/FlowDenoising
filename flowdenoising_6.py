@@ -91,7 +91,6 @@ def OF_filter_along_Z_slice(z, kernel):
         OF_compensated_slice = warp_slice(vol[(z + i - ks2) % vol.shape[0], :, :], flow)
         tmp_slice += OF_compensated_slice * kernel[i]
     filtered_vol[z, :, :] = tmp_slice
-    #__percent__.value = int(100*(z/vol.shape[2]))
     __percent__.value += 1
 
 def OF_filter_along_Y_slice(y, kernel):
@@ -114,7 +113,6 @@ def OF_filter_along_Y_slice(y, kernel):
         OF_compensated_slice = warp_slice(vol[:, (y + i - ks2) % vol.shape[1], :], flow)
         tmp_slice += OF_compensated_slice * kernel[i]
     filtered_vol[:, y, :] = tmp_slice
-    #__percent__.value = int(100*(y/vol.shape[1]))
     __percent__.value += 1
 
 def OF_filter_along_X_slice(x, kernel):
@@ -137,34 +135,21 @@ def OF_filter_along_X_slice(x, kernel):
         OF_compensated_slice = warp_slice(vol[:, :, (x + i - ks2) % vol.shape[2]], flow)
         tmp_slice += OF_compensated_slice * kernel[i]
     filtered_vol[:, :, x] = tmp_slice
-    #__percent__.value = int(100*(x/vol.shape[0]))
     __percent__.value += 1
 
-def OF_filter_along_Z_chunk(chunk_index, kernel):
-    Z_dim = vol.shape[0]
-    chunk_size = Z_dim//number_of_processes
+def OF_filter_along_Z_chunk(chunk_index, chunk_size, chunk_offset, kernel):
     for z in range(chunk_size):
-        OF_filter_along_Z_slice(chunk_index*chunk_size + z, kernel)
-    for z in range(Z_dim % number_of_processes):
-        OF_filter_along_Z_slice(chunk_index*number_of_processes + z, kernel)
+        OF_filter_along_Z_slice(chunk_index*chunk_size + z + chunk_offset, kernel)
     return chunk_index
 
-def OF_filter_along_Y_chunk(chunk_index, kernel):
-    Y_dim = vol.shape[1]
-    chunk_size = Y_dim//number_of_processes
+def OF_filter_along_Y_chunk(chunk_index, chunk_size, chunk_offset, kernel):
     for y in range(chunk_size):
-        OF_filter_along_Y_slice(chunk_index*chunk_size + y, kernel)
-    for y in range(Y_dim % number_of_processes):
-        OF_filter_along_Y_slice(chunk_index*number_of_processes + y, kernel)
+        OF_filter_along_Y_slice(chunk_index*chunk_size + y + chunk_offset, kernel)
     return chunk_index
 
-def OF_filter_along_X_chunk(chunk_index, kernel):
-    X_dim = vol.shape[2]
-    chunk_size = X_dim//number_of_processes
+def OF_filter_along_X_chunk(chunk_index, chunk_size, chunk_offset, kernel):
     for x in range(chunk_size):
-        OF_filter_along_X_slice(chunk_index*chunk_size + x, kernel)
-    for x in range(X_dim % number_of_processes):
-        OF_filter_along_X_slice(chunk_index*number_of_processes + x, kernel)
+        OF_filter_along_X_slice(chunk_index*chunk_size + x + chunk_offset, kernel)
     return chunk_index
     
 def OF_filter_along_Z(kernel, l, w):
@@ -176,16 +161,34 @@ def OF_filter_along_Z(kernel, l, w):
         min_OF = 1000
         max_OF = -1000
 
+    Z_dim = vol.shape[0]
+    chunk_size = Z_dim//number_of_processes
     #for i in range(number_of_processes):
     #    OF_filter_along_Z_chunk(i, padded_vol, kernel)
-    vol_indexes = [i for i in range(number_of_processes)]
+    chunk_indexes = [i for i in range(number_of_processes)]
+    chunk_sizes = [chunk_size]*number_of_processes
+    chunk_offsets = [0]*number_of_processes
     kernels = [kernel]*number_of_processes
     with ProcessPoolExecutor(max_workers=number_of_processes) as executor:
         for _ in executor.map(OF_filter_along_Z_chunk,
-                              vol_indexes,
+                              chunk_indexes,
+                              chunk_sizes,
+                              chunk_offsets,
                               kernels):
             logging.debug(f"PE #{_} has finished")
-
+    remainding_slices = Z_dim % number_of_processes
+    if remainding_slices > 0:
+        chunk_indexes = [i for i in range(remainding_slices)]
+        chunk_sizes = [1]*remainding_slices
+        chunk_offsets = [chunk_size*number_of_processes]*remainding_slices
+        kernels = [kernel]*remainding_slices
+        with ProcessPoolExecutor(max_workers=remainding_slices) as executor:
+            for _ in executor.map(OF_filter_along_Z_chunk,
+                                  chunk_indexes,
+                                  chunk_sizes,
+                                  chunk_offsets,
+                                  kernels):
+                logging.debug(f"PU #{_} finished")
     if __debug__:
         time_1 = time.process_time()
         logging.debug(f"Filtering along Z spent {time_1 - time_0} seconds")
@@ -198,16 +201,36 @@ def OF_filter_along_Y(kernel, l, w):
     if __debug__:
         time_0 = time.process_time()
         min_OF = 1000
-        max_OF = -1000 
+        max_OF = -1000
+
+    Y_dim = vol.shape[1]
+    chunk_size = Y_dim//number_of_processes
     #for i in range(number_of_processes):
     #    OF_filter_along_Y_chunk(i, padded_vol, kernel)
-    vol_indexes = [i for i in range(number_of_processes)]
+    chunk_indexes = [i for i in range(number_of_processes)]
+    chunk_sizes = [chunk_size]*number_of_processes
+    chunk_offsets = [0]*number_of_processes
     kernels = [kernel]*number_of_processes
     with ProcessPoolExecutor(max_workers=number_of_processes) as executor:
         for _ in executor.map(OF_filter_along_Y_chunk,
-                              vol_indexes,
+                              chunk_indexes,
+                              chunk_sizes,
+                              chunk_offsets,
                               kernels):
             logging.debug(f"PE #{_} has finished")
+    remainding_slices = Y_dim % number_of_processes
+    if remainding_slices > 0:
+        chunk_indexes = [i for i in range(remainding_slices)]
+        chunk_sizes = [1]*remainding_slices
+        chunk_offsets = [chunk_size*number_of_processes]*remainding_slices
+        kernels = [kernel]*remainding_slices
+        with ProcessPoolExecutor(max_workers=remainding_slices) as executor:
+            for _ in executor.map(OF_filter_along_Y_chunk,
+                                  chunk_indexes,
+                                  chunk_sizes,
+                                  chunk_offsets,
+                                  kernels):
+                logging.debug(f"PU #{_} finished")
 
     if __debug__:
         time_1 = time.process_time()
@@ -222,15 +245,35 @@ def OF_filter_along_X(kernel, l, w):
         time_0 = time.process_time()
         min_OF = 1000
         max_OF = -1000
+
+    X_dim = vol.shape[2]
+    chunk_size = X_dim//number_of_processes
     #for i in range(number_of_processes):
     #    OF_filter_along_X_chunk(i, padded_vol, kernel)
-    vol_indexes = [i for i in range(number_of_processes)]
+    chunk_indexes = [i for i in range(number_of_processes)]
+    chunk_sizes = [chunk_size]*number_of_processes
+    chunk_offsets = [0]*number_of_processes
     kernels = [kernel]*number_of_processes
     with ProcessPoolExecutor(max_workers=number_of_processes) as executor:
         for _ in executor.map(OF_filter_along_X_chunk,
-                              vol_indexes,
+                              chunk_indexes,
+                              chunk_sizes,
+                              chunk_offsets,
                               kernels):
             logging.debug(f"PE #{_} has finished")
+    remainding_slices = X_dim % number_of_processes
+    if remainding_slices > 0:
+        chunk_indexes = [i for i in range(remainding_slices)]
+        chunk_sizes = [1]*remainding_slices
+        chunk_offsets = [chunk_size*number_of_processes]*remainding_slices
+        kernels = [kernel]*remainding_slices
+        with ProcessPoolExecutor(max_workers=remainding_slices) as executor:
+            for _ in executor.map(OF_filter_along_X_chunk,
+                                  chunk_indexes,
+                                  chunk_sizes,
+                                  chunk_offsets,
+                                  kernels):
+                logging.debug(f"PU #{_} finished")
 
     if __debug__:
         time_1 = time.process_time()
@@ -273,43 +316,18 @@ def no_OF_filter_along_X_slice(x, kernel):
     __percent__.value += 1
 
 def no_OF_filter_along_Z_chunk(chunk_index, chunk_size, chunk_offset, kernel):
-    #Z_dim = vol.shape[0]
-    #chunk_size = Z_dim//number_of_processes
-    #if chunk_size < 1:
-    #    return chunk_index
     for z in range(chunk_size):
-        # Notice that the slices of a chunk are not contiguous
-        #no_OF_filter_along_Z_slice(z*number_of_processes + chunk_index, kernel)
         no_OF_filter_along_Z_slice(chunk_index*chunk_size + z + chunk_offset, kernel)
-    #for z in range(Z_dim % number_of_processes):
-    #    print("-----------------------------", chunk_index*chunk_size + z)
-    #    no_OF_filter_along_Z_slice(chunk_index*chunk_size + z, kernel)
     return chunk_index
 
 def no_OF_filter_along_Y_chunk(chunk_index, chunk_size, chunk_offset, kernel):
-    #Y_dim = vol.shape[1]
-    #chunk_size = Y_dim//number_of_processes
-    #if chunk_size < 1:
-    #    return chunk_index
     for y in range(chunk_size):
-        # Notice that the slices of a chunk are not contiguous
-        #no_OF_filter_along_Y_slice(y*number_of_processes + i, kernel)
         no_OF_filter_along_Y_slice(chunk_index*chunk_size + y + chunk_offset, kernel)
-    #for y in range(Y_dim % number_of_processes):
-    #    no_OF_filter_along_Y_slice(chunk_index*chunk_size + y, kernel)
     return chunk_index
 
 def no_OF_filter_along_X_chunk(chunk_index, chunk_size, chunk_offset, kernel):
-    #X_dim = vol.shape[2]
-    #chunk_size = X_dim//number_of_processes
-    #if chunk_size < 1:
-    #    return chunk_index
     for x in range(chunk_size):
-        # Notice that the slices of a chunk are not contiguous
-        #no_OF_filter_along_X_slice(x*number_of_processes + i, kernel)
         no_OF_filter_along_X_slice(chunk_index*chunk_size + x + chunk_offset, kernel)
-    #for x in range(X_dim % number_of_processes):
-    #    no_OF_filter_along_X_slice(chunk_index*chunk_size + x, kernel)
     return chunk_index
 
 def no_OF_filter_along_Z(kernel):
@@ -335,7 +353,6 @@ def no_OF_filter_along_Z(kernel):
             logging.debug(f"PU #{_} finished")
     remainding_slices = Z_dim % number_of_processes
     if remainding_slices > 0:
-        print("---------------", remainding_slices)
         chunk_indexes = [i for i in range(remainding_slices)]
         chunk_sizes = [1]*remainding_slices
         chunk_offsets = [chunk_size*number_of_processes]*remainding_slices
@@ -375,7 +392,6 @@ def no_OF_filter_along_Y(kernel):
             logging.debug(f"PU #{_} finished")
     remainding_slices = Y_dim % number_of_processes
     if remainding_slices > 0:
-        print("---------------", remainding_slices)
         chunk_indexes = [i for i in range(remainding_slices)]
         chunk_sizes = [1]*remainding_slices
         chunk_offsets = [chunk_size*number_of_processes]*remainding_slices
@@ -414,7 +430,6 @@ def no_OF_filter_along_X(kernel):
             logging.debug(f"PU #{_} finished")
     remainding_slices = X_dim % number_of_processes
     if remainding_slices > 0:
-        print("---------------", remainding_slices)
         chunk_indexes = [i for i in range(remainding_slices)]
         chunk_sizes = [1]*remainding_slices
         chunk_offsets = [chunk_size*number_of_processes]*remainding_slices
