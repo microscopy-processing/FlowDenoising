@@ -255,7 +255,8 @@ def no_OF_filter_along_Z_slice(z, kernel):
     for i in range(kernel.size):
         tmp_slice += vol[(z + i - ks2) % vol.shape[0], :, :]*kernel[i]
     filtered_vol[z, :, :] = tmp_slice
-    __percent__.value = int(100*(z/vol.shape[2]))
+    #__percent__.value = int(100*(z/vol.shape[2]))
+    __percent__.value += 1
 
 def no_OF_filter_along_Y_slice(y, kernel):
     ks2 = kernel.size//2
@@ -263,7 +264,8 @@ def no_OF_filter_along_Y_slice(y, kernel):
     for i in range(kernel.size):
         tmp_slice += vol[:, (y + i - ks2) % vol.shape[1], :]*kernel[i]
     filtered_vol[:, y, :] = tmp_slice
-    __percent__.value = int(100*(y/vol.shape[1]))
+    #__percent__.value = int(100*(y/vol.shape[1]))
+    __percent__.value += 1
 
 def no_OF_filter_along_X_slice(x, kernel):
     ks2 = kernel.size//2
@@ -271,7 +273,8 @@ def no_OF_filter_along_X_slice(x, kernel):
     for i in range(kernel.size):
         tmp_slice += vol[:, :, (x + i - ks2) % vol.shape[2]]*kernel[i]
     filtered_vol[:, :, x] = tmp_slice
-    __percent__.value = int(100*(x/vol.shape[0]))
+    #__percent__.value = int(100*(x/vol.shape[0]))
+    __percent__.value += 1
 
 def no_OF_filter_along_Z_chunk(chunk_index, kernel):
     Z_dim = vol.shape[0]
