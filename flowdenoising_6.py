@@ -413,7 +413,7 @@ def no_OF_filter_along_X(kernel):
     if __debug__:
         time_0 = time.process_time()
 
-    X_dim = vol.shape[0]
+    X_dim = vol.shape[2]
     chunk_size = X_dim//number_of_processes
     #for i in range(number_of_processes):
     #    no_OF_filter_along_X_chunk(i, kernel)
