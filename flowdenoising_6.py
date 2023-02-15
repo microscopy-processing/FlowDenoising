@@ -25,13 +25,13 @@ import time
 
 import concurrent
 import multiprocessing
-from multiprocessing import shared_memory
+from multiprocessing import shared_memory, Value
 from concurrent.futures.process import ProcessPoolExecutor
 number_of_PUs = multiprocessing.cpu_count()
 
 LOGGING_FORMAT = "[%(asctime)s] (%(levelname)s) %(message)s"
 
-__percent__ = 0
+__percent__ = Value('i', 0)
 
 def get_gaussian_kernel(sigma=1):
     logging.info(f"Computing gaussian kernel with sigma={sigma}")
@@ -92,7 +92,8 @@ def OF_filter_along_Z_slice(z, kernel):
         OF_compensated_slice = warp_slice(vol[(z + i - ks2) % vol.shape[0], :, :], flow)
         tmp_slice += OF_compensated_slice * kernel[i]
     filtered_vol[z, :, :] = tmp_slice
-    __percent__ = int(100*(z/vol.shape[2]))
+    #__percent__.value = int(100*(z/vol.shape[2]))
+    __percent__.value += 1
 
 def OF_filter_along_Y_slice(y, kernel):
     ks2 = kernel.size//2
@@ -114,7 +115,8 @@ def OF_filter_along_Y_slice(y, kernel):
         OF_compensated_slice = warp_slice(vol[:, (y + i - ks2) % vol.shape[1], :], flow)
         tmp_slice += OF_compensated_slice * kernel[i]
     filtered_vol[:, y, :] = tmp_slice
-    __percent__ = int(100*(y/vol.shape[1]))
+    #__percent__.value = int(100*(y/vol.shape[1]))
+    __percent__.value += 1
 
 def OF_filter_along_X_slice(x, kernel):
     ks2 = kernel.size//2
@@ -136,7 +138,8 @@ def OF_filter_along_X_slice(x, kernel):
         OF_compensated_slice = warp_slice(vol[:, :, (x + i - ks2) % vol.shape[2]], flow)
         tmp_slice += OF_compensated_slice * kernel[i]
     filtered_vol[:, :, x] = tmp_slice
-    __percent__ = int(100*(x/vol.shape[0]))
+    #__percent__.value = int(100*(x/vol.shape[0]))
+    __percent__.value += 1
 
 def OF_filter_along_Z_chunk(chunk_index, kernel):
     Z_dim = vol.shape[0]
@@ -235,10 +238,13 @@ def OF_filter_along_X(kernel, l, w):
         logging.debug(f"Filtering along X spent {time_1 - time_0} seconds")
 
 def OF_filter(kernels, l, w):
+    #global __percent__
     OF_filter_along_Z(kernels[0], l, w)
     vol[...] = filtered_vol[...]
+    #__percent__.value = 0
     OF_filter_along_Y(kernels[1], l, w)
     vol[...] = filtered_vol[...]
+    #__percent__.value = 0
     OF_filter_along_X(kernels[2], l, w)
 
 ###############################################################
@@ -249,7 +255,7 @@ def no_OF_filter_along_Z_slice(z, kernel):
     for i in range(kernel.size):
         tmp_slice += vol[(z + i - ks2) % vol.shape[0], :, :]*kernel[i]
     filtered_vol[z, :, :] = tmp_slice
-    __percent__ = int(100*(z/vol.shape[2]))
+    __percent__.value = int(100*(z/vol.shape[2]))
 
 def no_OF_filter_along_Y_slice(y, kernel):
     ks2 = kernel.size//2
@@ -257,7 +263,7 @@ def no_OF_filter_along_Y_slice(y, kernel):
     for i in range(kernel.size):
         tmp_slice += vol[:, (y + i - ks2) % vol.shape[1], :]*kernel[i]
     filtered_vol[:, y, :] = tmp_slice
-    __percent__ = int(100*(y/vol.shape[1]))
+    __percent__.value = int(100*(y/vol.shape[1]))
 
 def no_OF_filter_along_X_slice(x, kernel):
     ks2 = kernel.size//2
@@ -265,7 +271,7 @@ def no_OF_filter_along_X_slice(x, kernel):
     for i in range(kernel.size):
         tmp_slice += vol[:, :, (x + i - ks2) % vol.shape[2]]*kernel[i]
     filtered_vol[:, :, x] = tmp_slice
-    __percent__ = int(100*(x/vol.shape[0]))
+    __percent__.value = int(100*(x/vol.shape[0]))
 
 def no_OF_filter_along_Z_chunk(chunk_index, kernel):
     Z_dim = vol.shape[0]
@@ -307,7 +313,6 @@ def no_OF_filter_along_X_chunk(chunk_index, kernel):
     return chunk_index
 
 def no_OF_filter_along_Z(kernel):
-    global __percent__
     logging.info(f"Filtering along Z with kernel length={kernel.size}")
 
     if __debug__:
@@ -328,7 +333,6 @@ def no_OF_filter_along_Z(kernel):
         logging.debug(f"Filtering along Z spent {time_1 - time_0} seconds")
 
 def no_OF_filter_along_Y(kernel):
-    global __percent__
     logging.info(f"Filtering along Y with kernel length={kernel.size}")
 
     if __debug__:
@@ -349,7 +353,6 @@ def no_OF_filter_along_Y(kernel):
         logging.debug(f"Filtering along Y spent {time_1 - time_0} seconds")
 
 def no_OF_filter_along_X(kernel):
-    global __percent__
     logging.info(f"Filtering along X with kernel length={kernel.size}")
     if __debug__:
         time_0 = time.process_time()
@@ -382,9 +385,8 @@ def int_or_str(text):
         return text
 
 def feedback():
-    global __percent__
     while True:
-        logging.info(f"{__percent__} %")
+        logging.info(f"{int(100*__percent__.value/np.sum(vol.shape))} %")
         time.sleep(1)
 
 parser = argparse.ArgumentParser(
@@ -432,10 +434,6 @@ if __name__ == "__main__":
         logging.info("Verbosity level = 1")        
     else:
         logging.basicConfig(format=LOGGING_FORMAT, level=logging.CRITICAL)
-
-    thread = threading.Thread(target=feedback)
-    thread.daemon = True # To obey CTRL+C interruption.
-    thread.start()
 
     logging.info(f"Number of processing units: {number_of_PUs}")
         
@@ -507,6 +505,10 @@ if __name__ == "__main__":
     
     #vol = np.transpose(vol, transpose_pattern)
     #logging.info(f"shape of the volume to denoise (Z, Y, X) = {vol.shape}")
+
+    thread = threading.Thread(target=feedback)
+    thread.daemon = True # To obey CTRL+C interruption.
+    thread.start()
 
     if args.no_OF:
         no_OF_filter(kernels)
