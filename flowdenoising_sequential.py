@@ -58,20 +58,20 @@ def warp_slice(reference, flow):
 
 def get_flow(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIDE, prev_flow=None):
     if __debug__:
-        time_0 = time.process_time()
+        time_0 = time.perf_counter()
     flow = cv2.calcOpticalFlowFarneback(prev=target, next=reference, flow=prev_flow, pyr_scale=0.5, levels=l, winsize=w, iterations=OF_ITERS, poly_n=OF_POLY_N, poly_sigma=OF_POLY_SIGMA, flags=cv2.OPTFLOW_USE_INITIAL_FLOW)
     #flow = cv2.calcOpticalFlowFarneback(prev=target, next=reference, flow=None, pyr_scale=0.5, levels=l, winsize=w, iterations=OF_ITERS, poly_n=OF_POLY_N, poly_sigma=OF_POLY_SIGMA, flags=0)
     if __debug__:
-        time_1 = time.process_time()
+        time_1 = time.perf_counter()
         logging.debug(f"OF computed in {1000*(time_1 - time_0):4.3f} ms, max_X={np.max(flow[0]):+3.2f}, min_X={np.min(flow[0]):+3.2f}, max_Y={np.max(flow[1]):+3.2f}, min_Y={np.min(flow[1]):+3.2f}")
     return flow
 
 def get_flow_(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIDE, prev_flow=None):
     if __debug__:
-        time_0 = time.process_time()
+        time_0 = time.perf_counter()
     flow = cv2.calcOpticalFlowFarneback(prev=target, next=reference, flow=prev_flow, pyr_scale=0.5, levels=l, winsize=w, iterations=OF_ITERS, poly_n=OF_POLY_N, poly_sigma=OF_POLY_SIGMA, flags=0)
     if __debug__:
-        time_1 = time.process_time()
+        time_1 = time.perf_counter()
         logging.debug(f"OF computed in {1000*(time_1 - time_0):4.3f} ms, max_X={np.max(flow[0]):+3.2f}, min_X={np.min(flow[0]):+3.2f}, max_Y={np.max(flow[1]):+3.2f}, min_Y={np.min(flow[1]):+3.2f}")
     return flow
 
@@ -79,7 +79,7 @@ def OF_filter_along_Z(vol, kernel, l, w, mean):
     global __percent__
     logging.info(f"Filtering along Z with l={l}, w={w}, and kernel length={kernel.size}")
     if __debug__:
-        time_0 = time.process_time()
+        time_0 = time.perf_counter()
         min_OF = 1000
         max_OF = -1000 
     filtered_vol = np.zeros_like(vol).astype(np.float32)
@@ -123,7 +123,7 @@ def OF_filter_along_Z(vol, kernel, l, w, mean):
         filtered_vol[z, :, :] = tmp_slice
         __percent__ = int(100*(z/Z_dim))
     if __debug__:
-        time_1 = time.process_time()
+        time_1 = time.perf_counter()
         logging.debug(f"Filtering along Z spent {time_1 - time_0} seconds")
         logging.debug(f"Min OF val: {min_OF}")
         logging.debug(f"Max OF val: {max_OF}")
@@ -133,7 +133,7 @@ def OF_filter_along_Z_(vol, kernel, l, w, mean):
     global __percent__
     logging.info(f"Filtering along Z with l={l}, w={w}, and kernel length={kernel.size}")
     if __debug__:
-        time_0 = time.process_time()
+        time_0 = time.perf_counter()
         min_OF = 1000
         max_OF = -1000 
     filtered_vol = np.zeros_like(vol).astype(np.float32)
@@ -162,7 +162,7 @@ def OF_filter_along_Z_(vol, kernel, l, w, mean):
         filtered_vol[z, :, :] = tmp_slice
         __percent__ = int(100*(z/Z_dim))
     if __debug__:
-        time_1 = time.process_time()
+        time_1 = time.perf_counter()
         logging.debug(f"Filtering along Z spent {time_1 - time_0} seconds")
         logging.debug(f"Min OF val: {min_OF}")
         logging.debug(f"Max OF val: {max_OF}")
@@ -172,7 +172,7 @@ def no_OF_filter_along_Z(vol, kernel, mean):
     global __percent__
     logging.info(f"Filtering along Z with l={l}, w={w}, and kernel length={kernel.size}")
     if __debug__:
-        time_0 = time.process_time()
+        time_0 = time.perf_counter()
     filtered_vol = np.zeros_like(vol).astype(np.float32)
     shape_of_vol = np.shape(vol)
     #padded_vol = np.zeros(shape=(shape_of_vol[0] + kernel.size, shape_of_vol[1], shape_of_vol[2]))
@@ -187,7 +187,7 @@ def no_OF_filter_along_Z(vol, kernel, mean):
         #logging.info(f"Filtering along Z {int(100*(z/Z_dim))}%")
         __percent__ = int(100*(z/Z_dim))
     if __debug__:
-        time_1 = time.process_time()
+        time_1 = time.perf_counter()
         logging.debug(f"Filtering along Z spent {time_1 - time_0} seconds")
     return filtered_vol
 
@@ -195,7 +195,7 @@ def OF_filter_along_Y_(vol, kernel, l, w, mean):
     global __percent__
     logging.info(f"Filtering along Y with l={l}, w={w}, and kernel length={kernel.size}")
     if __debug__:
-        time_0 = time.process_time()
+        time_0 = time.perf_counter()
         min_OF = 1000
         max_OF = -1000 
     filtered_vol = np.zeros_like(vol).astype(np.float32)
@@ -226,7 +226,7 @@ def OF_filter_along_Y_(vol, kernel, l, w, mean):
         #logging.info(f"Filtering along Y {int(100*(y/Y_dim))}%")
         __percent__ = int(100*(y/Y_dim))
     if __debug__:
-        time_1 = time.process_time()
+        time_1 = time.perf_counter()
         logging.debug(f"Filtering along Y spent {time_1 - time_0} seconds")
         logging.debug(f"Min OF val: {min_OF}")
         logging.debug(f"Max OF val: {max_OF}")
@@ -236,7 +236,7 @@ def OF_filter_along_Y(vol, kernel, l, w, mean):
     global __percent__
     logging.info(f"Filtering along Y with l={l}, w={w}, and kernel length={kernel.size}")
     if __debug__:
-        time_0 = time.process_time()
+        time_0 = time.perf_counter()
         min_OF = 1000
         max_OF = -1000 
     filtered_vol = np.zeros_like(vol).astype(np.float32)
@@ -281,7 +281,7 @@ def OF_filter_along_Y(vol, kernel, l, w, mean):
         filtered_vol[:, y, :] = tmp_slice
         __percent__ = int(100*(y/Y_dim))
     if __debug__:
-        time_1 = time.process_time()
+        time_1 = time.perf_counter()
         logging.debug(f"Filtering along Y spent {time_1 - time_0} seconds")
         logging.debug(f"Min OF val: {min_OF}")
         logging.debug(f"Max OF val: {max_OF}")
@@ -291,7 +291,7 @@ def no_OF_filter_along_Y(vol, kernel, mean):
     global __percent__
     logging.info(f"Filtering along Y with l={l}, w={w}, and kernel length={kernel.size}")
     if __debug__:
-        time_0 = time.process_time()
+        time_0 = time.perf_counter()
     filtered_vol = np.zeros_like(vol).astype(np.float32)
     shape_of_vol = np.shape(vol)
     #padded_vol = np.zeros(shape=(shape_of_vol[0], shape_of_vol[1] + kernel.size, shape_of_vol[2]))
@@ -306,7 +306,7 @@ def no_OF_filter_along_Y(vol, kernel, mean):
         #logging.info(f"Filtering along Y {int(100*(y/Y_dim))}%")
         __percent__ = int(100*(y/Y_dim))
     if __debug__:
-        time_1 = time.process_time()
+        time_1 = time.perf_counter()
         logging.debug(f"Filtering along Y spent {time_1 - time_0} seconds")
     return filtered_vol
 
@@ -314,7 +314,7 @@ def OF_filter_along_X(vol, kernel, l, w, mean):
     global __percent__
     logging.info(f"Filtering along X with l={l}, w={w}, and kernel length={kernel.size}")
     if __debug__:
-        time_0 = time.process_time()
+        time_0 = time.perf_counter()
         min_OF = 1000
         max_OF = -1000
     filtered_vol = np.zeros_like(vol).astype(np.float32)
@@ -359,7 +359,7 @@ def OF_filter_along_X(vol, kernel, l, w, mean):
         filtered_vol[:, :, x] = tmp_slice
         __percent__ = int(100*(x/X_dim))
     if __debug__:
-        time_1 = time.process_time()
+        time_1 = time.perf_counter()
         logging.debug(f"Filtering along X spent {time_1 - time_0} seconds")
     return filtered_vol
 
@@ -367,7 +367,7 @@ def OF_filter_along_X_(vol, kernel, l, w, mean):
     global __percent__
     logging.info(f"Filtering along X with l={l}, w={w}, and kernel length={kernel.size}")
     if __debug__:
-        time_0 = time.process_time()
+        time_0 = time.perf_counter()
     filtered_vol = np.zeros_like(vol).astype(np.float32)
     shape_of_vol = np.shape(vol)
     #padded_vol = np.zeros(shape=(shape_of_vol[0], shape_of_vol[1], shape_of_vol[2] + kernel.size))
@@ -389,7 +389,7 @@ def OF_filter_along_X_(vol, kernel, l, w, mean):
         #logging.info(f"Filtering along X {int(100*(x/X_dim))}%")
         __percent__ = int(100*(x/X_dim))
     if __debug__:
-        time_1 = time.process_time()
+        time_1 = time.perf_counter()
         logging.debug(f"Filtering along X spent {time_1 - time_0} seconds")
     return filtered_vol
 
@@ -397,7 +397,7 @@ def no_OF_filter_along_X(vol, kernel, mean):
     global __percent__
     logging.info(f"Filtering along X with l={l}, w={w}, and kernel length={kernel.size}")
     if __debug__:
-        time_0 = time.process_time()
+        time_0 = time.perf_counter()
     filtered_vol = np.zeros_like(vol).astype(np.float32)
     shape_of_vol = np.shape(vol)
     #padded_vol = np.zeros(shape=(shape_of_vol[0], shape_of_vol[1], shape_of_vol[2] + kernel.size))
@@ -412,7 +412,7 @@ def no_OF_filter_along_X(vol, kernel, mean):
         #logging.info(f"Filtering along X {int(100*(x/X_dim))}%")
         __percent__ = int(100*(x/X_dim))
     if __debug__:
-        time_1 = time.process_time()
+        time_1 = time.perf_counter()
         logging.debug(f"Filtering along X spent {time_1 - time_0} seconds")
     return filtered_vol
 
@@ -501,7 +501,7 @@ if __name__ == "__main__":
 
     if __debug__:
         logging.info(f"reading \"{args.input}\"")
-        time_0 = time.process_time()
+        time_0 = time.perf_counter()
 
     logging.debug(f"input = {args.input}")
 
@@ -523,7 +523,7 @@ if __name__ == "__main__":
     #logging.info(f"shape of the volume to denoise (Z, Y, X) = {vol.shape}")
 
     if __debug__:
-        time_1 = time.process_time()
+        time_1 = time.perf_counter()
         logging.info(f"read \"{args.input}\" in {time_1 - time_0} seconds")
 
     logging.info(f"{args.input} type = {vol.dtype}")
@@ -551,7 +551,7 @@ if __name__ == "__main__":
     
     if __debug__:
         logging.info(f"writting \"{args.output}\"")
-        time_0 = time.process_time()
+        time_0 = time.perf_counter()
 
     logging.debug(f"output = {args.output}")
         
@@ -571,5 +571,5 @@ if __name__ == "__main__":
             skimage.io.imsave(args.output, filtered_vol.astype(np.uint16), plugin="tifffile")
 
     if __debug__:
-        time_1 = time.process_time()        
+        time_1 = time.perf_counter()        
         logging.info(f"written \"{args.output}\" in {time_1 - time_0} seconds")
