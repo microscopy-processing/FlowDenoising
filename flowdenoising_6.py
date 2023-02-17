@@ -63,11 +63,11 @@ def warp_slice(reference, flow):
 
 def get_flow(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIDE, prev_flow=None):
     if __debug__:
-        time_0 = time.process_time()
+        time_0 = time.perf_counter()
     flow = cv2.calcOpticalFlowFarneback(prev=target, next=reference, flow=prev_flow, pyr_scale=0.5, levels=l, winsize=w, iterations=OF_ITERS, poly_n=OF_POLY_N, poly_sigma=OF_POLY_SIGMA, flags=cv2.OPTFLOW_USE_INITIAL_FLOW)
     #flow = cv2.calcOpticalFlowFarneback(prev=target, next=reference, flow=None, pyr_scale=0.5, levels=l, winsize=w, iterations=OF_ITERS, poly_n=OF_POLY_N, poly_sigma=OF_POLY_SIGMA, flags=0)
     if __debug__:
-        time_1 = time.process_time()
+        time_1 = time.perf_counter()
         logging.debug(f"OF computed in {1000*(time_1 - time_0):4.3f} ms, max_X={np.max(flow[0]):+3.2f}, min_X={np.min(flow[0]):+3.2f}, max_Y={np.max(flow[1]):+3.2f}, min_Y={np.min(flow[1]):+3.2f}")
     return flow
 
@@ -157,7 +157,7 @@ def OF_filter_along_Z(kernel, l, w):
     logging.info(f"Filtering along Z with l={l}, w={w}, and kernel length={kernel.size}")
 
     if __debug__:
-        time_0 = time.process_time()
+        time_0 = time.perf_counter()
         min_OF = 1000
         max_OF = -1000
 
@@ -190,7 +190,7 @@ def OF_filter_along_Z(kernel, l, w):
                                   kernels):
                 logging.debug(f"PU #{_} finished")
     if __debug__:
-        time_1 = time.process_time()
+        time_1 = time.perf_counter()
         logging.debug(f"Filtering along Z spent {time_1 - time_0} seconds")
         logging.debug(f"Min OF val: {min_OF}")
         logging.debug(f"Max OF val: {max_OF}")
@@ -199,7 +199,7 @@ def OF_filter_along_Y(kernel, l, w):
     global __percent__
     logging.info(f"Filtering along Y with l={l}, w={w}, and kernel length={kernel.size}")
     if __debug__:
-        time_0 = time.process_time()
+        time_0 = time.perf_counter()
         min_OF = 1000
         max_OF = -1000
 
@@ -233,7 +233,7 @@ def OF_filter_along_Y(kernel, l, w):
                 logging.debug(f"PU #{_} finished")
 
     if __debug__:
-        time_1 = time.process_time()
+        time_1 = time.perf_counter()
         logging.debug(f"Filtering along Y spent {time_1 - time_0} seconds")
         logging.debug(f"Min OF val: {min_OF}")
         logging.debug(f"Max OF val: {max_OF}")
@@ -242,7 +242,7 @@ def OF_filter_along_X(kernel, l, w):
     global __percent__
     logging.info(f"Filtering along X with l={l}, w={w}, and kernel length={kernel.size}")
     if __debug__:
-        time_0 = time.process_time()
+        time_0 = time.perf_counter()
         min_OF = 1000
         max_OF = -1000
 
@@ -276,7 +276,7 @@ def OF_filter_along_X(kernel, l, w):
                 logging.debug(f"PU #{_} finished")
 
     if __debug__:
-        time_1 = time.process_time()
+        time_1 = time.perf_counter()
         logging.debug(f"Filtering along X spent {time_1 - time_0} seconds")
 
 def OF_filter(kernels, l, w):
@@ -334,7 +334,7 @@ def no_OF_filter_along_Z(kernel):
     logging.info(f"Filtering along Z with kernel length={kernel.size}")
 
     if __debug__:
-        time_0 = time.process_time()
+        time_0 = time.perf_counter()
 
     Z_dim = vol.shape[0]
     chunk_size = Z_dim//number_of_processes
@@ -366,14 +366,14 @@ def no_OF_filter_along_Z(kernel):
                 logging.debug(f"PU #{_} finished")
 
     if __debug__:
-        time_1 = time.process_time()
+        time_1 = time.perf_counter()
         logging.debug(f"Filtering along Z spent {time_1 - time_0} seconds")
 
 def no_OF_filter_along_Y(kernel):
     logging.info(f"Filtering along Y with kernel length={kernel.size}")
 
     if __debug__:
-        time_0 = time.process_time()
+        time_0 = time.perf_counter()
 
     Y_dim = vol.shape[1]
     chunk_size = Y_dim//number_of_processes
@@ -405,13 +405,13 @@ def no_OF_filter_along_Y(kernel):
                 logging.debug(f"PU #{_} finished")
 
     if __debug__:
-        time_1 = time.process_time()
+        time_1 = time.perf_counter()
         logging.debug(f"Filtering along Y spent {time_1 - time_0} seconds")
 
 def no_OF_filter_along_X(kernel):
     logging.info(f"Filtering along X with kernel length={kernel.size}")
     if __debug__:
-        time_0 = time.process_time()
+        time_0 = time.perf_counter()
 
     X_dim = vol.shape[2]
     chunk_size = X_dim//number_of_processes
@@ -443,7 +443,7 @@ def no_OF_filter_along_X(kernel):
                 logging.debug(f"PU #{_} finished")
 
     if __debug__:
-        time_1 = time.process_time()
+        time_1 = time.perf_counter()
         logging.debug(f"Filtering along X spent {time_1 - time_0} seconds")
 
 def no_OF_filter(kernels):
@@ -462,7 +462,7 @@ def int_or_str(text):
 
 def feedback():
     while True:
-        logging.info(f"{100*__percent__.value/np.sum(vol.shape):3.2f} %")
+        logging.info(f"{100*__percent__.value/np.sum(vol.shape):3.2f} % completed")
         time.sleep(1)
 
 number_of_PUs = multiprocessing.cpu_count()
@@ -531,7 +531,7 @@ if __name__ == "__main__":
 
     if __debug__:
         logging.info(f"reading \"{args.input}\"")
-        time_0 = time.process_time()
+        time_0 = time.perf_counter()
 
     logging.debug(f"input = {args.input}")
 
@@ -555,7 +555,7 @@ if __name__ == "__main__":
     logging.info(f"Input vol average = {vol_mean}")
 
     if __debug__:
-        time_1 = time.process_time()
+        time_1 = time.perf_counter()
         logging.info(f"read \"{args.input}\" in {time_1 - time_0} seconds")
 
     kernels = [None]*3
@@ -596,10 +596,20 @@ if __name__ == "__main__":
     thread.daemon = True # To obey CTRL+C interruption.
     thread.start()
 
+    if __debug__:
+        logging.info(f"Filtering ...")
+        #time_0 = time.perf_counter()
+        time_0 = time.perf_counter()
+
     if args.no_OF:
         no_OF_filter(kernels)
     else:
         OF_filter(kernels, l, w)
+
+    if __debug__:
+        #time_1 = time.perf_counter()        
+        time_1 = time.perf_counter()        
+        logging.info(f"Volume filtered in {time_1 - time_0} seconds")
 
     #filtered_vol = np.transpose(filtered_vol, transpose_pattern)
     logging.info(f"{args.output} type = {filtered_vol.dtype}")
@@ -609,7 +619,7 @@ if __name__ == "__main__":
     
     if __debug__:
         logging.info(f"writting \"{args.output}\"")
-        time_0 = time.process_time()
+        time_0 = time.perf_counter()
 
     logging.debug(f"output = {args.output}")
 
@@ -634,5 +644,5 @@ if __name__ == "__main__":
     SM_filtered_vol.unlink()
     
     if __debug__:
-        time_1 = time.process_time()        
+        time_1 = time.perf_counter()        
         logging.info(f"written \"{args.output}\" in {time_1 - time_0} seconds")
