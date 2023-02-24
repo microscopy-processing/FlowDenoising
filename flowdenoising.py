@@ -589,8 +589,9 @@ if __name__ == "__main__":
     #vol = np.transpose(vol, transpose_pattern)
     #logging.info(f"shape of the volume to denoise (Z, Y, X) = {vol.shape}")
 
+    logging.info(f"Number of available processing units: {number_of_PUs}")
     number_of_processes = args.number_of_processes
-    logging.info(f"number of processes: {number_of_processes}")
+    logging.info(f"Number of concurrent processes: {number_of_processes}")
     
     thread = threading.Thread(target=feedback)
     thread.daemon = True # To obey CTRL+C interruption.
