@@ -632,12 +632,17 @@ if __name__ == "__main__":
             mrc.set_data(filtered_vol.astype(np.float32))
             mrc.data
     else:
+        logging.debug(f"Writting TIFF file")
+        skimage.io.imsave(args.output, vol.astype(np.float32), plugin="tifffile")
+        '''
         if np.max(vol) < 256:
             logging.debug(f"Writting TIFF file (uint8)")
             skimage.io.imsave(args.output, filtered_vol.astype(np.uint8), plugin="tifffile")
         else:
             logging.debug(f"Writting TIFF file (uint16)")
-            skimage.io.imsave(args.output, vol.astype(np.uint16), plugin="tifffile")
+            #skimage.io.imsave(args.output, vol.astype(np.uint16), plugin="tifffile")
+            skimage.io.imsave(args.output, vol.astype(np.float32), plugin="tifffile")
+        '''
 
     SM_vol.close()
     SM_vol.unlink()
