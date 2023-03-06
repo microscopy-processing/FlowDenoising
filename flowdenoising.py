@@ -587,7 +587,7 @@ if __name__ == "__main__":
     filtered_vol.fill(0)
     
     #vol = np.transpose(vol, transpose_pattern)
-    #logging.info(f"shape of the volume to denoise (Z, Y, X) = {vol.shape}")
+    #logging.info(f"After transposing, shape of the volume to denoise (Z, Y, X) = {vol.shape}")
 
     logging.info(f"Number of available processing units: {number_of_PUs}")
     number_of_processes = args.number_of_processes
@@ -633,7 +633,7 @@ if __name__ == "__main__":
             mrc.data
     else:
         logging.debug(f"Writting TIFF file")
-        skimage.io.imsave(args.output, vol.astype(np.float32), plugin="tifffile")
+        skimage.io.imsave(args.output, filtered_vol.astype(np.float32), plugin="tifffile")
         '''
         if np.max(vol) < 256:
             logging.debug(f"Writting TIFF file (uint8)")
