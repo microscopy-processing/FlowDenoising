@@ -61,11 +61,21 @@ def warp_slice(reference, flow):
     warped_slice = cv2.remap(reference, map_xy, None, interpolation=cv2.INTER_LINEAR, borderMode=OFCA_EXTENSION_MODE)
     return warped_slice
 
-def get_flow(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIDE, prev_flow=None):
+def get_flow_with_prev_flow(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIDE, prev_flow=None):
     if __debug__:
         time_0 = time.perf_counter()
     flow = cv2.calcOpticalFlowFarneback(prev=target, next=reference, flow=prev_flow, pyr_scale=0.5, levels=l, winsize=w, iterations=OF_ITERS, poly_n=OF_POLY_N, poly_sigma=OF_POLY_SIGMA, flags=cv2.OPTFLOW_USE_INITIAL_FLOW)
     #flow = cv2.calcOpticalFlowFarneback(prev=target, next=reference, flow=None, pyr_scale=0.5, levels=l, winsize=w, iterations=OF_ITERS, poly_n=OF_POLY_N, poly_sigma=OF_POLY_SIGMA, flags=0)
+    if __debug__:
+        time_1 = time.perf_counter()
+        logging.debug(f"OF computed in {1000*(time_1 - time_0):4.3f} ms, max_X={np.max(flow[0]):+3.2f}, min_X={np.min(flow[0]):+3.2f}, max_Y={np.max(flow[1]):+3.2f}, min_Y={np.min(flow[1]):+3.2f}")
+    return flow
+
+def get_flow_without_prev_flow(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIDE, prev_flow=None):
+    if __debug__:
+        time_0 = time.perf_counter()
+    #flow = cv2.calcOpticalFlowFarneback(prev=target, next=reference, flow=prev_flow, pyr_scale=0.5, levels=l, winsize=w, iterations=OF_ITERS, poly_n=OF_POLY_N, poly_sigma=OF_POLY_SIGMA, flags=cv2.OPTFLOW_USE_INITIAL_FLOW)
+    flow = cv2.calcOpticalFlowFarneback(prev=target, next=reference, flow=None, pyr_scale=0.5, levels=l, winsize=w, iterations=OF_ITERS, poly_n=OF_POLY_N, poly_sigma=OF_POLY_SIGMA, flags=0)
     if __debug__:
         time_1 = time.perf_counter()
         logging.debug(f"OF computed in {1000*(time_1 - time_0):4.3f} ms, max_X={np.max(flow[0]):+3.2f}, min_X={np.min(flow[0]):+3.2f}, max_Y={np.max(flow[1]):+3.2f}, min_Y={np.min(flow[1]):+3.2f}")
@@ -452,7 +462,7 @@ def no_OF_filter(kernels):
     no_OF_filter_along_Y(kernels[1])
     vol[...] = filtered_vol[...]
     no_OF_filter_along_X(kernels[2])
-    
+
 def int_or_str(text):
     '''Helper function for argument parsing.'''
     try:
@@ -500,6 +510,7 @@ parser.add_argument("-m", "--memory_map",
 parser.add_argument("-p", "--number_of_processes", type=int_or_str,
                     help="Maximum number of processes",
                     default=number_of_PUs)
+parser.add_argument("--recompute_flow", action="store_true", help="Disable the use of adjacent optical flow fields")
 
 def show_memory_usage(msg=''):
     logging.info(f"{psutil.Process(os.getpid()).memory_info().rss/(1024*1024):.1f} MB used in process {os.getpid()} {msg}")
@@ -517,6 +528,13 @@ if __name__ == "__main__":
         logging.info("Verbosity level = 1")        
     else:
         logging.basicConfig(format=LOGGING_FORMAT, level=logging.CRITICAL)
+
+    if args.recompute_flow:
+        get_flow = get_flow_without_prev_flow
+        logging.info("No reusing adjacent OF fields as predictions")
+    else:
+        get_flow = get_flow_with_prev_flow
+        logging.info("Using adjacent OF fields as predictions")
 
     logging.info(f"Number of processing units: {number_of_PUs}")
         
