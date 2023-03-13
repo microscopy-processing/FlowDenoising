@@ -7,7 +7,7 @@
 # * J.J. Fernández (CSIC).
 # * V. González-Ruiz (UAL).
 #
-# Please, refer to the LICENSE to know the terms of usage of this software.
+# Please, refer to the LICENSE.txt to know the terms of usage of this software.
 
 import logging
 import os
@@ -290,16 +290,11 @@ def OF_filter_along_X(kernel, l, w):
         logging.debug(f"Filtering along X spent {time_1 - time_0} seconds")
 
 def OF_filter(kernels, l, w):
-    #global __percent__
     OF_filter_along_Z(kernels[0], l, w)
     vol[...] = filtered_vol[...]
-    #__percent__.value = 0
     OF_filter_along_Y(kernels[1], l, w)
     vol[...] = filtered_vol[...]
-    #__percent__.value = 0
     OF_filter_along_X(kernels[2], l, w)
-
-###############################################################
 
 def no_OF_filter_along_Z_slice(z, kernel):
     ks2 = kernel.size//2
@@ -488,13 +483,9 @@ parser.add_argument("-i", "--input", type=int_or_str,
 parser.add_argument("-o", "--output", type=int_or_str,
                     help="Output a MRC-file or a multi-image TIFF-file",
                     default="./denoised_volume.mrc")
-#parser.add_argument("-n", "--number_of_images", type=int_or_str,
-#                    help="Number of input images (only if the sequence of images is input)",
-#                    default=32)
 parser.add_argument("-s", "--sigma", nargs="+",
                     help="Gaussian sigma for each dimension in the order (Z, Y, X)",
                     default=(SIGMA, SIGMA, SIGMA))
-                    #default=f"{SIGMA} {SIGMA} {SIGMA}")
 parser.add_argument("-l", "--levels", type=int_or_str,
                     help="Number of levels of the Gaussian pyramid used by the optical flow estimator",
                     default=OF_LEVELS)
@@ -652,15 +643,6 @@ if __name__ == "__main__":
     else:
         logging.debug(f"Writting TIFF file")
         skimage.io.imsave(args.output, filtered_vol.astype(np.float32), plugin="tifffile")
-        '''
-        if np.max(vol) < 256:
-            logging.debug(f"Writting TIFF file (uint8)")
-            skimage.io.imsave(args.output, filtered_vol.astype(np.uint8), plugin="tifffile")
-        else:
-            logging.debug(f"Writting TIFF file (uint16)")
-            #skimage.io.imsave(args.output, vol.astype(np.uint16), plugin="tifffile")
-            skimage.io.imsave(args.output, vol.astype(np.float32), plugin="tifffile")
-        '''
 
     SM_vol.close()
     SM_vol.unlink()
