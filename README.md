@@ -11,6 +11,6 @@ Please, cite this article if you use this software in your research.
 
 Example of use:
 
-    > python flowdenoising.py -i vol.mrc --output denoised_vol.mrc
+    > python flowdenoising.py -i vol.mrc -o denoised_vol.mrc
     
 The [manual](https://github.com/microscopy-processing/FlowDenoising/blob/main/manual/manual.ipynb) provides detailed, practical information about the usage of the software.
