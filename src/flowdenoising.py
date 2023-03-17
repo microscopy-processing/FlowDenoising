@@ -47,7 +47,7 @@ def get_gaussian_kernel(sigma=1):
 
 OFCA_EXTENSION_MODE = cv2.BORDER_REPLICATE
 OF_LEVELS = 0
-OF_WINDOW_SIDE = 5
+OF_WINDOW_SIZE = 5
 OF_ITERS = 3
 OF_POLY_N = 5
 OF_POLY_SIGMA = 1.2
@@ -61,7 +61,7 @@ def warp_slice(reference, flow):
     warped_slice = cv2.remap(reference, map_xy, None, interpolation=cv2.INTER_LINEAR, borderMode=OFCA_EXTENSION_MODE)
     return warped_slice
 
-def get_flow_with_prev_flow(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIDE, prev_flow=None):
+def get_flow_with_prev_flow(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIZE, prev_flow=None):
     if __debug__:
         time_0 = time.perf_counter()
     flow = cv2.calcOpticalFlowFarneback(prev=target, next=reference, flow=prev_flow, pyr_scale=0.5, levels=l, winsize=w, iterations=OF_ITERS, poly_n=OF_POLY_N, poly_sigma=OF_POLY_SIGMA, flags=cv2.OPTFLOW_USE_INITIAL_FLOW)
@@ -71,7 +71,7 @@ def get_flow_with_prev_flow(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIDE, pr
         logging.debug(f"OF computed in {1000*(time_1 - time_0):4.3f} ms, max_X={np.max(flow[0]):+3.2f}, min_X={np.min(flow[0]):+3.2f}, max_Y={np.max(flow[1]):+3.2f}, min_Y={np.min(flow[1]):+3.2f}")
     return flow
 
-def get_flow_without_prev_flow(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIDE, prev_flow=None):
+def get_flow_without_prev_flow(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIZE, prev_flow=None):
     if __debug__:
         time_0 = time.perf_counter()
     #flow = cv2.calcOpticalFlowFarneback(prev=target, next=reference, flow=prev_flow, pyr_scale=0.5, levels=l, winsize=w, iterations=OF_ITERS, poly_n=OF_POLY_N, poly_sigma=OF_POLY_SIGMA, flags=cv2.OPTFLOW_USE_INITIAL_FLOW)
@@ -489,9 +489,9 @@ parser.add_argument("-s", "--sigma", nargs="+",
 parser.add_argument("-l", "--levels", type=int_or_str,
                     help="Number of levels of the Gaussian pyramid used by the optical flow estimator",
                     default=OF_LEVELS)
-parser.add_argument("-w", "--winside", type=int_or_str,
-                    help="Side of the window used by the optical flow estimator",
-                    default=OF_WINDOW_SIDE)
+parser.add_argument("-w", "--winsize", type=int_or_str,
+                    help="Size of the window used by the optical flow estimator",
+                    default=OF_WINDOW_SIZE)
 parser.add_argument("-v", "--verbosity", type=int_or_str,
                     help="Verbosity level", default=0)
 parser.add_argument("-n", "--no_OF", action="store_true", help="Disable optical flow compensation")
