@@ -532,7 +532,7 @@ if __name__ == "__main__":
     sigma = [float(i) for i in args.sigma]
     logging.info(f"sigma={tuple(sigma)}")
     l = args.levels
-    w = args.winside
+    w = args.winsize
     
     #logging.debug(f"Using transpose pattern {args.transpose} {type(args.transpose)}")
     #transpose_pattern = tuple([int(i) for i in args.transpose])
