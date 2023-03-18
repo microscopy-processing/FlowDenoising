@@ -46,7 +46,7 @@ def get_gaussian_kernel(sigma=1):
     return coeffs[1:-1]
 
 OFCA_EXTENSION_MODE = cv2.BORDER_REPLICATE
-OF_LEVELS = 0
+OF_LEVELS = 3
 OF_WINDOW_SIZE = 5
 OF_ITERS = 3
 OF_POLY_N = 5
