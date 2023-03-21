@@ -46,7 +46,7 @@ def get_gaussian_kernel(sigma=1):
     return coeffs[1:-1]
 
 OFCA_EXTENSION_MODE = cv2.BORDER_REPLICATE
-OF_LEVELS = 0
+OF_LEVELS = 3
 OF_WINDOW_SIZE = 5
 OF_ITERS = 3
 OF_POLY_N = 5
@@ -54,21 +54,20 @@ OF_POLY_SIGMA = 1.2
 SIGMA = 2.0
 
 # create optical flow instance
-gpu_flow = cv2.cuda_FarnebackOpticalFlow.create(
-    numLevels=5, pyr_scale=0.5, False, 15, 3, 5, 1.2, 0,
-)
-# calculate optical flow
-gpu_flow = cv2.cuda_FarnebackOpticalFlow.calc(
-    gpu_flow, gpu_previous, gpu_current, None,
-)
+#flow = cv2.cuda_FarnebackOpticalFlow.create(numLevels=5, pyr_scale=0.5, fastPyramids=False, winSize=15, numIters=3, 5, polyN=1.2, polySigma=1.1, flags=0)
 
-def warp_slice(reference, flow):
-    height, width = flow.shape[:2]
-    map_x = np.tile(np.arange(width), (height, 1))
-    map_y = np.swapaxes(np.tile(np.arange(height), (width, 1)), 0, 1)
-    map_xy = (flow + np.dstack((map_x, map_y))).astype('float32')
-    warped_slice = cv2.remap(reference, map_xy, None, interpolation=cv2.INTER_LINEAR, borderMode=OFCA_EXTENSION_MODE)
-    return warped_slice
+# calculate optical flow
+
+def get_flow_without_prev_flow(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIZE, prev_flow=None):
+    if __debug__:
+        time_0 = time.perf_counter()
+    #flow = cv2.calcOpticalFlowFarneback(prev=target, next=reference, flow=prev_flow, pyr_scale=0.5, levels=l, winsize=w, iterations=OF_ITERS, poly_n=OF_POLY_N, poly_sigma=OF_POLY_SIGMA, flags=cv2.OPTFLOW_USE_INITIAL_FLOW)
+    #flow = cv2.calcOpticalFlowFarneback(prev=target, next=reference, flow=None, pyr_scale=0.5, levels=l, winsize=w, iterations=OF_ITERS, poly_n=OF_POLY_N, poly_sigma=OF_POLY_SIGMA, flags=0)
+    flow = cv2.cuda_FarnebackOpticalFlow.calc(flow, prev=target, next=reference, flow=None)
+    if __debug__:
+        time_1 = time.perf_counter()
+        logging.debug(f"OF computed in {1000*(time_1 - time_0):4.3f} ms, max_X={np.max(flow[0]):+3.2f}, min_X={np.min(flow[0]):+3.2f}, max_Y={np.max(flow[1]):+3.2f}, min_Y={np.min(flow[1]):+3.2f}")
+    return flow
 
 def get_flow_with_prev_flow(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIZE, prev_flow=None):
     if __debug__:
@@ -80,15 +79,13 @@ def get_flow_with_prev_flow(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIZE, pr
         logging.debug(f"OF computed in {1000*(time_1 - time_0):4.3f} ms, max_X={np.max(flow[0]):+3.2f}, min_X={np.min(flow[0]):+3.2f}, max_Y={np.max(flow[1]):+3.2f}, min_Y={np.min(flow[1]):+3.2f}")
     return flow
 
-def get_flow_without_prev_flow(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIZE, prev_flow=None):
-    if __debug__:
-        time_0 = time.perf_counter()
-    #flow = cv2.calcOpticalFlowFarneback(prev=target, next=reference, flow=prev_flow, pyr_scale=0.5, levels=l, winsize=w, iterations=OF_ITERS, poly_n=OF_POLY_N, poly_sigma=OF_POLY_SIGMA, flags=cv2.OPTFLOW_USE_INITIAL_FLOW)
-    flow = cv2.calcOpticalFlowFarneback(prev=target, next=reference, flow=None, pyr_scale=0.5, levels=l, winsize=w, iterations=OF_ITERS, poly_n=OF_POLY_N, poly_sigma=OF_POLY_SIGMA, flags=0)
-    if __debug__:
-        time_1 = time.perf_counter()
-        logging.debug(f"OF computed in {1000*(time_1 - time_0):4.3f} ms, max_X={np.max(flow[0]):+3.2f}, min_X={np.min(flow[0]):+3.2f}, max_Y={np.max(flow[1]):+3.2f}, min_Y={np.min(flow[1]):+3.2f}")
-    return flow
+def warp_slice(reference, flow):
+    height, width = flow.shape[:2]
+    map_x = np.tile(np.arange(width), (height, 1))
+    map_y = np.swapaxes(np.tile(np.arange(height), (width, 1)), 0, 1)
+    map_xy = (flow + np.dstack((map_x, map_y))).astype('float32')
+    warped_slice = cv2.remap(reference, map_xy, None, interpolation=cv2.INTER_LINEAR, borderMode=OFCA_EXTENSION_MODE)
+    return warped_slice
 
 def OF_filter_along_Z_slice(z, kernel):
     ks2 = kernel.size//2
@@ -536,6 +533,7 @@ if __name__ == "__main__":
         get_flow = get_flow_with_prev_flow
         logging.info("Using adjacent OF fields as predictions")
 
+    logging.info(cv2.cuda.printShortCudaDeviceInfo(device=0))
     logging.info(f"Number of processing units: {number_of_PUs}")
         
     sigma = [float(i) for i in args.sigma]
