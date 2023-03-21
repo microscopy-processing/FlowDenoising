@@ -1,0 +1,53 @@
+# https://hub.docker.com/r/nvidia/cuda/tags
+FROM nvidia/cuda:12.1.0-devel-ubuntu18.04
+MAINTAINER Vicente González Ruiz "vruiz@ual.es"
+RUN apt-get update && apt-get install -y sudo
+RUN echo '%sudo ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
+RUN useradd -ms /bin/bash vruiz
+RUN echo "vruiz:vruiz" | chpasswd && adduser vruiz sudo
+RUN su vruiz
+USER vruiz
+RUN sudo apt-get install -y python3
+WORKDIR /home/vruiz
+RUN mkdir PEs
+WORKDIR /home/vruiz/PEs
+RUN sudo apt install -y python3.10-venv
+RUN python3 -m venv opencv
+WORKDIR /home/vruiz
+RUN source PEs/opencv/bin/activate
+RUN pip install numpy
+RUN sudo apt-get install -y wget
+RUN wget https://developer.download.nvidia.com/compute/cuda/10.2/Prod/local_installers/cuda_10.2.89_440.33.01_linux.run
+RUN sudo apt-get install -y build-essential cmake unzip pkg-config
+RUN sudo apt-get install -y libjpeg-dev libpng-dev libtiff-dev
+RUN sudo apt-get install -y libavcodec-dev libavformat-dev libswscale-dev libv4l-dev
+RUN sudo apt-get install -y libxvidcore-dev libx264-dev
+RUN sudo apt-get install -y libgtk-3-dev
+RUN sudo apt-get install -y libatlas-base-dev gfortran
+RUN sudo apt-get install -y python3-dev
+RUN sudo apt-get install -y libxml2
+RUN sudo sh cuda_10.2.89_440.33.01_linux.run --override
+RUN wget -O opencv.zip https://github.com/opencv/opencv/archive/4.4.0.zip
+
+RUN wget -O opencv_contrib.zip https://github.com/opencv/opencv_contrib/archive/4.4.0.zip
+RUN unzip opencv.zip
+RUN unzip opencv_contrib.zip
+RUN mv opencv-4.4.0 opencv
+RUN mv opencv_contrib-4.4.0 opencv_contrib
+WORKDIR opencv
+mkdir build
+WORKDIR build
+RUN cmake -D CMAKE_BUILD_TYPE=RELEASE \
+      -D CMAKE_INSTALL_PREFIX=/usr/local \
+      -D INSTALL_PYTHON_EXAMPLES=OFF \
+      -D INSTALL_C_EXAMPLES=OFF \
+      -D OPENCV_EXTRA_MODULES_PATH=../../opencv_contrib/modules \
+      -D PYTHON_EXECUTABLE=env/bin/python3 \
+      -D BUILD_EXAMPLES=ON \
+      -D WITH_CUDA=ON \
+      -D CUDA_FAST_MATH=ON \
+      -D WITH_CUBLAS=ON \
+      -D CUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda-10.2 \
+      -D OpenCL_LIBRARY=/usr/local/cuda-10.2/lib64/libOpenCL.so \
+      -DOpenCL_INCLUDE_DIR=/usr/local/cuda-10.2/include/ \
+      ..
