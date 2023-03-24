@@ -48,7 +48,7 @@ OF_POLY_N = 5
 OF_POLY_SIGMA = 1.2
 SIGMA = 2.0
 
-def get_flow(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIZE, prev_flow=None):
+def get_flow_GPU(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIZE, prev_flow=None):
     if __debug__:
         time_0 = time.perf_counter()
     gpu_target = cv2.cuda_GpuMat()
@@ -57,13 +57,13 @@ def get_flow(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIZE, prev_flow=None):
     gpu_reference.upload(reference)
 
     #flow = cv2.cuda_calcOpticalFlowFarneback(prev=target, next=reference, flow=prev_flow, pyr_scale=0.5, levels=l, winsize=w, iterations=OF_ITERS, poly_n=OF_POLY_N, poly_sigma=OF_POLY_SIGMA, flags=cv2.OPTFLOW_USE_INITIAL_FLOW)
-    gpu_flow = cv2.calcOpticalFlowFarneback(prev=gpu_target, next=gpu_reference, flow=None, pyr_scale=0.5, levels=l, winsize=w, iterations=OF_ITERS, poly_n=OF_POLY_N, poly_sigma=OF_POLY_SIGMA, flags=0)
+    #gpu_flow = cv2.calcOpticalFlowFarneback(prev=gpu_target, next=gpu_reference, flow=None, pyr_scale=0.5, levels=l, winsize=w, iterations=OF_ITERS, poly_n=OF_POLY_N, poly_sigma=OF_POLY_SIGMA, flags=0)
 
     # create optical flow instance
-    #gpu_flow = cv2.cuda_FarnebackOpticalFlow(5, 0.5, False, 15, 3, 5, 1.2, 0)
+    flower = cv2.cuda_FarnebackOpticalFlow.create(numLevels=l, pyrScale=0.5, fastPyramids=False, winSize=w, numIters=OF_ITERS, polyN=OF_POLY_N, polySigma=OF_POLY_SIGMA, flags=0)
     
     # calculate optical flow
-    #gpu_flow = cv2.cuda.FarnebackOpticalFlow_calc(gpu_flow, gpu_reference, gpu_target, None)
+    gpu_flow = cv2.cuda.FarnebackOpticalFlow.calc(flower, I0=gpu_target, I1=gpu_reference, flow=None)
 
     flow = gpu_flow.download()
     
@@ -71,6 +71,20 @@ def get_flow(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIZE, prev_flow=None):
         time_1 = time.perf_counter()
         logging.debug(f"OF computed in {1000*(time_1 - time_0):4.3f} ms, max_X={np.max(flow[0]):+3.2f}, min_X={np.min(flow[0]):+3.2f}, max_Y={np.max(flow[1]):+3.2f}, min_Y={np.min(flow[1]):+3.2f}")
     return flow
+
+def get_flow_CPU(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIZE, prev_flow=None):
+    if __debug__:
+        time_0 = time.perf_counter()
+
+    #flow = cv2.cuda_calcOpticalFlowFarneback(prev=target, next=reference, flow=prev_flow, pyr_scale=0.5, levels=l, winsize=w, iterations=OF_ITERS, poly_n=OF_POLY_N, poly_sigma=OF_POLY_SIGMA, flags=cv2.OPTFLOW_USE_INITIAL_FLOW)
+    flow = cv2.calcOpticalFlowFarneback(prev=target, next=reference, flow=None, pyr_scale=0.5, levels=l, winsize=w, iterations=OF_ITERS, poly_n=OF_POLY_N, poly_sigma=OF_POLY_SIGMA, flags=0)
+    
+    if __debug__:
+        time_1 = time.perf_counter()
+        logging.debug(f"OF computed in {1000*(time_1 - time_0):4.3f} ms, max_X={np.max(flow[0]):+3.2f}, min_X={np.min(flow[0]):+3.2f}, max_Y={np.max(flow[1]):+3.2f}, min_Y={np.min(flow[1]):+3.2f}")
+    return flow
+
+get_flow = get_flow_GPU
 
 def warp_slice(reference, flow):
     height, width = flow.shape[:2]
