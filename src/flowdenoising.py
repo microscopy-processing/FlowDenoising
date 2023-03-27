@@ -7,6 +7,8 @@
 # * J.J. Fernández (CSIC).
 # * V. González-Ruiz (UAL).
 #
+# This code implements multiple-processing Gaussian filtering of 3D data.
+#
 # Please, refer to the LICENSE.txt to know the terms of usage of this software.
 
 import logging
@@ -22,6 +24,7 @@ import mrcfile
 import argparse
 import threading
 import time
+from shared_code import *
 
 import concurrent
 import multiprocessing
@@ -32,27 +35,6 @@ LOGGING_FORMAT = "[%(asctime)s] (%(levelname)s) %(message)s"
 
 __percent__ = Value('f', 0)
 
-def get_gaussian_kernel(sigma=1):
-    logging.info(f"Computing gaussian kernel with sigma={sigma}")
-    number_of_coeffs = 3
-    number_of_zeros = 0
-    while number_of_zeros < 2 :
-        delta = np.zeros(number_of_coeffs)
-        delta[delta.size//2] = 1
-        coeffs = scipy.ndimage.gaussian_filter1d(delta, sigma=sigma)
-        number_of_zeros = coeffs.size - np.count_nonzero(coeffs)
-        number_of_coeffs += 1
-    logging.debug("Kernel computed")
-    return coeffs[1:-1]
-
-OFCA_EXTENSION_MODE = cv2.BORDER_REPLICATE
-OF_LEVELS = 3
-OF_WINDOW_SIZE = 5
-OF_ITERS = 3
-OF_POLY_N = 5
-OF_POLY_SIGMA = 1.2
-SIGMA = 2.0
-
 def warp_slice(reference, flow):
     height, width = flow.shape[:2]
     map_x = np.tile(np.arange(width), (height, 1))
@@ -61,21 +43,11 @@ def warp_slice(reference, flow):
     warped_slice = cv2.remap(reference, map_xy, None, interpolation=cv2.INTER_LINEAR, borderMode=OFCA_EXTENSION_MODE)
     return warped_slice
 
-def get_flow_with_prev_flow(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIZE, prev_flow=None):
+def get_flow(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIZE, prev_flow=None):
     if __debug__:
         time_0 = time.perf_counter()
     flow = cv2.calcOpticalFlowFarneback(prev=target, next=reference, flow=prev_flow, pyr_scale=0.5, levels=l, winsize=w, iterations=OF_ITERS, poly_n=OF_POLY_N, poly_sigma=OF_POLY_SIGMA, flags=cv2.OPTFLOW_USE_INITIAL_FLOW)
     #flow = cv2.calcOpticalFlowFarneback(prev=target, next=reference, flow=None, pyr_scale=0.5, levels=l, winsize=w, iterations=OF_ITERS, poly_n=OF_POLY_N, poly_sigma=OF_POLY_SIGMA, flags=0)
-    if __debug__:
-        time_1 = time.perf_counter()
-        logging.debug(f"OF computed in {1000*(time_1 - time_0):4.3f} ms, max_X={np.max(flow[0]):+3.2f}, min_X={np.min(flow[0]):+3.2f}, max_Y={np.max(flow[1]):+3.2f}, min_Y={np.min(flow[1]):+3.2f}")
-    return flow
-
-def get_flow_without_prev_flow(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIZE, prev_flow=None):
-    if __debug__:
-        time_0 = time.perf_counter()
-    #flow = cv2.calcOpticalFlowFarneback(prev=target, next=reference, flow=prev_flow, pyr_scale=0.5, levels=l, winsize=w, iterations=OF_ITERS, poly_n=OF_POLY_N, poly_sigma=OF_POLY_SIGMA, flags=cv2.OPTFLOW_USE_INITIAL_FLOW)
-    flow = cv2.calcOpticalFlowFarneback(prev=target, next=reference, flow=None, pyr_scale=0.5, levels=l, winsize=w, iterations=OF_ITERS, poly_n=OF_POLY_N, poly_sigma=OF_POLY_SIGMA, flags=0)
     if __debug__:
         time_1 = time.perf_counter()
         logging.debug(f"OF computed in {1000*(time_1 - time_0):4.3f} ms, max_X={np.max(flow[0]):+3.2f}, min_X={np.min(flow[0]):+3.2f}, max_Y={np.max(flow[1]):+3.2f}, min_Y={np.min(flow[1]):+3.2f}")
@@ -501,7 +473,7 @@ parser.add_argument("-m", "--memory_map",
 parser.add_argument("-p", "--number_of_processes", type=int_or_str,
                     help="Maximum number of processes",
                     default=number_of_PUs)
-parser.add_argument("--recompute_flow", action="store_true", help="Disable the use of adjacent optical flow fields")
+#parser.add_argument("--recompute_flow", action="store_true", help="Disable the use of adjacent optical flow fields")
 
 def show_memory_usage(msg=''):
     logging.info(f"{psutil.Process(os.getpid()).memory_info().rss/(1024*1024):.1f} MB used in process {os.getpid()} {msg}")
@@ -520,12 +492,12 @@ if __name__ == "__main__":
     else:
         logging.basicConfig(format=LOGGING_FORMAT, level=logging.CRITICAL)
 
-    if args.recompute_flow:
-        get_flow = get_flow_without_prev_flow
-        logging.info("No reusing adjacent OF fields as predictions")
-    else:
-        get_flow = get_flow_with_prev_flow
-        logging.info("Using adjacent OF fields as predictions")
+    #if args.recompute_flow:
+    #    get_flow = get_flow_without_prev_flow
+    #    logging.info("No reusing adjacent OF fields as predictions")
+    #else:
+    #    get_flow = get_flow_with_prev_flow
+    #    logging.info("Using adjacent OF fields as predictions")
 
     logging.info(f"Number of processing units: {number_of_PUs}")
         
