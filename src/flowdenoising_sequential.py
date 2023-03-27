@@ -68,7 +68,7 @@ def OF_filter_along_Z(vol, kernel, l, w, mean):
         tmp_slice = np.zeros_like(vol[z]).astype(np.float32)
         assert kernel.size % 2 != 0 # kernel.size must be odd
         prev_flow = np.zeros(shape=(shape_of_vol[1], shape_of_vol[2], 2), dtype=np.float32)
-        for i in range((ks2) - 1, -1, -1):
+        for i in range(ks2 - 1, -1, -1):
             #print(i)
             #flow = get_flow(padded_vol[z + i, :, :], vol[z, :, :], l, w, prev_flow)
             flow = get_flow(vol[(z + i - ks2) % vol.shape[0], :, :], vol[z, :, :], l, w, prev_flow)
@@ -85,7 +85,7 @@ def OF_filter_along_Z(vol, kernel, l, w, mean):
             tmp_slice += OF_compensated_slice * kernel[i]
         tmp_slice += vol[z, :, :] * kernel[ks2]
         prev_flow = np.zeros(shape=(shape_of_vol[1], shape_of_vol[2], 2), dtype=np.float32)
-        for i in range(ks2+1, kernel.size):
+        for i in range(ks2 + 1, kernel.size):
             #print(i)
             #flow = get_flow(padded_vol[z + i, :, :], vol[z, :, :], l, w, prev_flow)
             flow = get_flow(vol[(z + i - ks2) % vol.shape[0], :, :], vol[z, :, :], l, w, prev_flow)
@@ -241,7 +241,7 @@ def OF_filter_along_Y(vol, kernel, l, w, mean):
         tmp_slice = np.zeros_like(vol[:, y, :]).astype(np.float32)
         assert kernel.size % 2 != 0 # kernel.size must be odd
         prev_flow = np.zeros(shape=(shape_of_vol[0], shape_of_vol[2], 2), dtype=np.float32)
-        for i in range((ks2) - 1, -1, -1):
+        for i in range(ks2 - 1, -1, -1):
             #print(i)
             #flow = get_flow(padded_vol[:, y + i, :], vol[:, y, :], l, w, prev_flow)
             flow = get_flow(vol[:, (y + i - ks2) % vol.shape[1] , :], vol[:, y, :], l, w, prev_flow)
@@ -258,7 +258,7 @@ def OF_filter_along_Y(vol, kernel, l, w, mean):
             tmp_slice += OF_compensated_slice * kernel[i]
         tmp_slice += vol[:, y, :] * kernel[ks2]
         prev_flow = np.zeros(shape=(shape_of_vol[0], shape_of_vol[2], 2), dtype=np.float32)
-        for i in range(ks2+1, kernel.size):
+        for i in range(ks2 + 1, kernel.size):
             #print(i)
             #flow = get_flow(padded_vol[:, y + i, :], vol[:, y, :], l, w, prev_flow)
             flow = get_flow(vol[:, (y + i - ks2) % vol.shape[1], :], vol[:, y, :], l, w, prev_flow)
@@ -326,7 +326,7 @@ def OF_filter_along_X(vol, kernel, l, w, mean):
         tmp_slice = np.zeros_like(vol[:, :, x]).astype(np.float32)
         assert kernel.size % 2 != 0 # kernel.size must be odd
         prev_flow = np.zeros(shape=(shape_of_vol[0], shape_of_vol[1], 2), dtype=np.float32)
-        for i in range((ks2) - 1, -1, -1):
+        for i in range(ks2 - 1, -1, -1):
             #print(i)
             #flow = get_flow(padded_vol[:, :, x + i], vol[:, :, x], l, w, prev_flow)
             flow = get_flow(vol[:, :, (x + i - ks2) % vol.shape[2]], vol[:, :, x], l, w, prev_flow)
@@ -343,7 +343,7 @@ def OF_filter_along_X(vol, kernel, l, w, mean):
             tmp_slice += OF_compensated_slice * kernel[i]
         tmp_slice += vol[:, :, x] * kernel[ks2]
         prev_flow = np.zeros(shape=(shape_of_vol[0], shape_of_vol[1], 2), dtype=np.float32)
-        for i in range(ks2+1, kernel.size):
+        for i in range(ks2 + 1, kernel.size):
             #print(i)
             #flow = get_flow(padded_vol[:, :, x + i], vol[:, :, x], l, w, prev_flow)
             flow = get_flow(vol[:, :, (x + i - ks2) % vol.shape[2]], vol[:, :, x], l, w, prev_flow)
