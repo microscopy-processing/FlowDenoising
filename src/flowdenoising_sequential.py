@@ -7,7 +7,7 @@
 # * J.J. Fernández (CSIC).
 # * V. González-Ruiz (UAL).
 #
-# Please, refer to the LICENSE to know the terms of usage of this software.
+# Please, refer to the LICENSE.txt to know the terms of usage of this software.
 
 import logging
 import os
@@ -41,7 +41,7 @@ def get_gaussian_kernel(sigma=1):
     return coeffs[1:-1]
 
 OFCA_EXTENSION_MODE = cv2.BORDER_REPLICATE
-OF_LEVELS = 0
+OF_LEVELS = 3
 OF_WINDOW_SIZE = 5
 OF_ITERS = 3
 OF_POLY_N = 5
@@ -55,9 +55,6 @@ def get_flow_GPU(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIZE, prev_flow=Non
     gpu_target.upload(target)
     gpu_reference = cv2.cuda_GpuMat()
     gpu_reference.upload(reference)
-
-    #flow = cv2.cuda_calcOpticalFlowFarneback(prev=target, next=reference, flow=prev_flow, pyr_scale=0.5, levels=l, winsize=w, iterations=OF_ITERS, poly_n=OF_POLY_N, poly_sigma=OF_POLY_SIGMA, flags=cv2.OPTFLOW_USE_INITIAL_FLOW)
-    #gpu_flow = cv2.calcOpticalFlowFarneback(prev=gpu_target, next=gpu_reference, flow=None, pyr_scale=0.5, levels=l, winsize=w, iterations=OF_ITERS, poly_n=OF_POLY_N, poly_sigma=OF_POLY_SIGMA, flags=0)
 
     # create optical flow instance
     flower = cv2.cuda_FarnebackOpticalFlow.create(numLevels=l, pyrScale=0.5, fastPyramids=False, winSize=w, numIters=OF_ITERS, polyN=OF_POLY_N, polySigma=OF_POLY_SIGMA, flags=0)
@@ -482,13 +479,9 @@ parser.add_argument("-i", "--input", type=int_or_str,
 parser.add_argument("-o", "--output", type=int_or_str,
                     help="Output a MRC-file or a multi-image TIFF-file",
                     default="./denoised_volume.mrc")
-#parser.add_argument("-n", "--number_of_images", type=int_or_str,
-#                    help="Number of input images (only if the sequence of images is input)",
-#                    default=32)
 parser.add_argument("-s", "--sigma", nargs="+",
                     help="Gaussian sigma for each dimension in the order (Z, Y, X)",
                     default=(SIGMA, SIGMA, SIGMA))
-                    #default=f"{SIGMA} {SIGMA} {SIGMA}")
 parser.add_argument("-l", "--levels", type=int_or_str,
                     help="Number of levels of the Gaussian pyramid used by the optical flow estimator",
                     default=OF_LEVELS)
@@ -514,7 +507,6 @@ if __name__ == "__main__":
     else:
         logging.basicConfig(format=LOGGING_FORMAT, level=logging.CRITICAL)
 
-    logging.info(cv2.cuda.printShortCudaDeviceInfo(device=0))
 
     thread = threading.Thread(target=feedback)
     thread.daemon = True # To obey CTRL+C interruption.
@@ -541,7 +533,7 @@ if __name__ == "__main__":
             logging.info(f"Using memory mapping")
             vol_MRC = rc = mrcfile.mmap(args.input, mode='r+')
         else:
-            vol_MRC = mrcfile.open(args.input)
+            vol_MRC = mrcfile.open(args.input, mode="r+")
         vol = vol_MRC.data
     else:
         vol = skimage.io.imread(args.input, plugin="tifffile").astype(np.float32)
@@ -593,12 +585,8 @@ if __name__ == "__main__":
             mrc.set_data(filtered_vol.astype(np.float32))
             mrc.data
     else:
-        if np.max(filtered_vol) < 256:
-            logging.debug(f"Writting TIFF file (uint8)")
-            skimage.io.imsave(args.output, filtered_vol.astype(np.uint8), plugin="tifffile")
-        else:
-            logging.debug(f"Writting TIFF file (uint16)")
-            skimage.io.imsave(args.output, filtered_vol.astype(np.uint16), plugin="tifffile")
+        logging.debug(f"Writting TIFF file")
+        skimage.io.imsave(args.output, filtered_vol.astype(np.float32), plugin="tifffile")
 
     if __debug__:
         time_1 = time.perf_counter()        
