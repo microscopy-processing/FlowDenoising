@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 '''3D Gaussian filtering controlled by the optical flow.
 '''
-
+#
 # "flowdenoising.py" is part of "https://github.com/microscopy-processing/FlowDenoising", authored by:
 #
 # * J.J. Fernández (CSIC).
@@ -10,7 +10,7 @@
 # This code implements multiple-processing Gaussian filtering of 3D data.
 #
 # Please, refer to the LICENSE.txt to know the terms of usage of this software.
-
+#
 import logging
 import os
 import numpy as np
