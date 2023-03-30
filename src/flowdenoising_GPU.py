@@ -1,16 +1,22 @@
 #!/usr/bin/env python
 '''3D Gaussian filtering controlled by the optical flow.
 '''
+
 #
-# "flowdenoising_GPU.py" is part of "https://github.com/microscopy-processing/FlowDenoising", authored by:
+# "flowdenoising_GPU.py" is part of
+# "https://github.com/microscopy-processing/FlowDenoising", authored
+# by:
 #
 # * J.J. Fernández (CSIC).
 # * V. González-Ruiz (UAL).
 #
-# This code implements GPU-processing Gaussian filtering of 3D data.
+# This version of the module flowdenoising.py computes the Farneback
+# algorithm in the GPU. The rest of computations are done in the CPU.
 #
-# Please, refer to the LICENSE.txt to know the terms of usage of this software.
+# Please, refer to the LICENSE.txt to know the terms of usage of this
+# software.
 #
+
 import logging
 import os
 import numpy as np
@@ -358,7 +364,7 @@ if __name__ == "__main__":
     else:
         logging.basicConfig(format=LOGGING_FORMAT, level=logging.CRITICAL)
 
-    #     logging.info(cv2.cuda.printShortCudaDeviceInfo(device=0))
+    logging.info(cv2.cuda.printShortCudaDeviceInfo(device=0))
     thread = threading.Thread(target=feedback)
     thread.daemon = True # To obey CTRL+C interruption.
     thread.start()
