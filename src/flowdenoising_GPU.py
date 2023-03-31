@@ -79,6 +79,7 @@ def get_flow(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIZE, prev_flow=None):
     return flow
 
 def OF_filter_along_Z(vol, kernel, l, w, mean):
+    #cv2.cuda.setDevice(0) # No es necesario
     ks2 = kernel.size//2
     global __percent__
     logging.info(f"Filtering along Z with l={l}, w={w}, and kernel length={kernel.size}")
@@ -365,6 +366,7 @@ if __name__ == "__main__":
         logging.basicConfig(format=LOGGING_FORMAT, level=logging.CRITICAL)
 
     logging.info(cv2.cuda.printShortCudaDeviceInfo(device=0))
+
     thread = threading.Thread(target=feedback)
     thread.daemon = True # To obey CTRL+C interruption.
     thread.start()
