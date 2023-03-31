@@ -31,7 +31,6 @@ import argparse
 import threading
 import time
 from shared_code import *
-#import cupy as cp
 
 LOGGING_FORMAT = "[%(asctime)s] (%(levelname)s) %(message)s"
 
@@ -43,14 +42,15 @@ def warp_slice(reference, flow):
     map_y = np.swapaxes(np.tile(np.arange(height), (width, 1)), 0, 1)
     map_xy = (flow + np.dstack((map_x, map_y))).astype('float32')
     #gpu_reference = cv2.cuda_GpuMat(rows=reference.shape[0], cols=reference.shape[1], type=reference.dtype)
-    gpu_reference = cv2.cuda_GpuMat()
-    gpu_reference.upload(reference)
-    gpu_map_x = cv2.cuda_GpuMat()
-    gpu_map_x.upload(map_xy[..., 0])
-    gpu_map_y = cv2.cuda_GpuMat()
-    gpu_map_y.upload(map_xy[..., 1]) 
-    gpu_warped_slice = cv2.cuda.remap(src=gpu_reference, xmap=gpu_map_x, ymap=gpu_map_y, interpolation=cv2.INTER_LINEAR, borderMode=OFCA_EXTENSION_MODE)
-    warped_slice = gpu_warped_slice.download()
+    #gpu_reference = cv2.cuda_GpuMat()
+    #gpu_reference.upload(reference)
+    #gpu_map_x = cv2.cuda_GpuMat()
+    #gpu_map_x.upload(map_xy[..., 0])
+    #gpu_map_y = cv2.cuda_GpuMat()
+    #gpu_map_y.upload(map_xy[..., 1]) 
+    #gpu_warped_slice = cv2.cuda.remap(src=gpu_reference, xmap=gpu_map_x, ymap=gpu_map_y, interpolation=cv2.INTER_LINEAR, borderMode=OFCA_EXTENSION_MODE)
+    #warped_slice = gpu_warped_slice.download()
+    warped_slice = cv2.remap(src=reference, map1=map_xy, map2=None, interpolation=cv2.INTER_LINEAR, borderMode=OFCA_EXTENSION_MODE)
     return warped_slice
 
 def get_flow(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIZE, prev_flow=None):
@@ -415,10 +415,21 @@ if __name__ == "__main__":
     kernel[1] = get_gaussian_kernel(sigma[1])
     kernel[2] = get_gaussian_kernel(sigma[2])
     logging.info(f"length of each filter (Z, Y, X) = {[len(i) for i in [*kernel]]}")
+    
+    if __debug__:
+        logging.info(f"Filtering ...")
+        #time_0 = time.perf_counter()
+        time_0 = time.perf_counter()
+
     if args.no_OF:
         filtered_vol = no_OF_filter(vol, kernel)
     else:
         filtered_vol = OF_filter(vol, kernel, l, w)
+
+    if __debug__:
+        #time_1 = time.perf_counter()        
+        time_1 = time.perf_counter()        
+        logging.info(f"Volume filtered in {time_1 - time_0} seconds")
 
     #filtered_vol = np.transpose(filtered_vol, transpose_pattern)
     logging.info(f"shape of the denoised volume (Z, Y, X) = {filtered_vol.shape}")

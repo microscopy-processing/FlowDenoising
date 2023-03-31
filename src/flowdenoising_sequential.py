@@ -547,10 +547,21 @@ if __name__ == "__main__":
     kernel[1] = get_gaussian_kernel(sigma[1])
     kernel[2] = get_gaussian_kernel(sigma[2])
     logging.info(f"length of each filter (Z, Y, X) = {[len(i) for i in [*kernel]]}")
+    
+    if __debug__:
+        logging.info(f"Filtering ...")
+        #time_0 = time.perf_counter()
+        time_0 = time.perf_counter()
+
     if args.no_OF:
         filtered_vol = no_OF_filter(vol, kernel)
     else:
         filtered_vol = OF_filter(vol, kernel, l, w)
+
+    if __debug__:
+        #time_1 = time.perf_counter()        
+        time_1 = time.perf_counter()        
+        logging.info(f"Volume filtered in {time_1 - time_0} seconds")
 
     #filtered_vol = np.transpose(filtered_vol, transpose_pattern)
     logging.info(f"shape of the denoised volume (Z, Y, X) = {filtered_vol.shape}")
