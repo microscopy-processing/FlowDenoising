@@ -64,7 +64,7 @@ def OF_filter_along_Z_slice(z, kernel):
     tmp_slice = np.zeros_like(vol[z, :, :]).astype(np.float32)
     assert kernel.size % 2 != 0 # kernel.size must be odd
     prev_flow = np.zeros(shape=(vol.shape[1], vol.shape[2], 2), dtype=np.float32)
-    for i in range(ks2 - 1, -1, -1):
+    for i in range(ks2 - 1, -1, -1): # Ojo, que me parece que este lazo está al reves!! Debería ser "range(0, ks2)"
         flow = get_flow(vol[(z + i - ks2) % vol.shape[0], :, :],
                         vol[z, :, :], l, w, prev_flow)
         prev_flow = flow

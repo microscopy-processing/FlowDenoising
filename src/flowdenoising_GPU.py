@@ -11,7 +11,7 @@
 # * V. González-Ruiz (UAL).
 #
 # This version of the module flowdenoising.py computes the Farneback
-# algorithm in the GPU. The rest of computations are done in the CPU.
+# algorithm in the GPU. The rest of computations are done in the CPU (only one core).
 #
 # Please, refer to the LICENSE.txt to know the terms of usage of this
 # software.
