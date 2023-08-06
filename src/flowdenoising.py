@@ -628,7 +628,7 @@ if __name__ == "__main__":
     logging.info(f"{args.output} average = {filtered_vol.mean()}")
     
     if __debug__:
-        logging.info(f"writting \"{args.output}\"")
+        logging.info(f"writing \"{args.output}\"")
         time_0 = time.perf_counter()
 
     logging.debug(f"output = {args.output}")
@@ -636,7 +636,7 @@ if __name__ == "__main__":
     MRC_output = ( args.output.split('.')[-1] == "MRC" or args.output.split('.')[-1] == "mrc" )
 
     if MRC_output:
-        logging.debug(f"Writting MRC file")
+        logging.debug(f"Writing MRC file")
         with mrcfile.new(args.output, overwrite=True) as mrc:
             mrc.set_data(filtered_vol.astype(np.float32))
             mrc.data
