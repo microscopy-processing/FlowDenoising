@@ -39,18 +39,25 @@ from concurrent.futures.process import ProcessPoolExecutor
 
 LOGGING_FORMAT = "[%(asctime)s] (%(levelname)s) %(message)s"
 
-# In shared memory
-percent = Value('f', 0)
-OFE_time = Value('f', 0)
-warping_time = Value('f', 0)
-convolution_time = Value('f', 0)
+if __debug__:
+    # In shared memory
+    percent = Value('f', 0)
+    OFE_time = Value('f', 0)
+    warping_time = Value('f', 0)
+    convolution_time = Value('f', 0)
 
 def warp_slice(reference, flow):
+    if __debug__:
+        time_0 = time.perf_counter()
     height, width = flow.shape[:2]
     map_x = np.tile(np.arange(width), (height, 1))
     map_y = np.swapaxes(np.tile(np.arange(height), (width, 1)), 0, 1)
     map_xy = (flow + np.dstack((map_x, map_y))).astype('float32')
     warped_slice = cv2.remap(reference, map_xy, None, interpolation=cv2.INTER_LINEAR, borderMode=OFCA_EXTENSION_MODE)
+    if __debug__:
+        time_1 = time.perf_counter()
+        diff = time_1 - time_0
+        warping_time.value += diff
     return warped_slice
 
 def get_flow(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIZE, prev_flow=None):
@@ -60,7 +67,9 @@ def get_flow(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIZE, prev_flow=None):
     #flow = cv2.calcOpticalFlowFarneback(prev=target, next=reference, flow=None, pyr_scale=0.5, levels=l, winsize=w, iterations=OF_ITERS, poly_n=OF_POLY_N, poly_sigma=OF_POLY_SIGMA, flags=0)
     if __debug__:
         time_1 = time.perf_counter()
-        logging.debug(f"OF computed in {1000*(time_1 - time_0):4.3f} ms, max_X={np.max(flow[0]):+3.2f}, min_X={np.min(flow[0]):+3.2f}, max_Y={np.max(flow[1]):+3.2f}, min_Y={np.min(flow[1]):+3.2f}")
+        diff = time_1 - time_0
+        logging.debug(f"OF computed in {1000*(diff):4.3f} ms, max_X={np.max(flow[0]):+3.2f}, min_X={np.min(flow[0]):+3.2f}, max_Y={np.max(flow[1]):+3.2f}, min_Y={np.min(flow[1]):+3.2f}")
+        OFE_time.value += diff
     return flow
 
 def OF_filter_along_Z_slice(z, kernel):
@@ -183,9 +192,11 @@ def OF_filter_along_Z(kernel, l, w):
                 logging.debug(f"PU #{_} finished")
     if __debug__:
         time_1 = time.perf_counter()
-        logging.debug(f"Filtering along Z spent {time_1 - time_0} seconds")
+        diff = time_1 - time_0
+        logging.debug(f"Filtering along Z spent {diff} seconds")
         logging.debug(f"Min OF val: {min_OF}")
         logging.debug(f"Max OF val: {max_OF}")
+        convolution_time.value += diff
 
 def OF_filter_along_Y(kernel, l, w):
     global percent
@@ -646,3 +657,5 @@ if __name__ == "__main__":
     if __debug__:
         time_1 = time.perf_counter()        
         logging.info(f"written \"{args.output}\" in {time_1 - time_0} seconds")
+        logging.info(f"OFE_time = {OFE_time.value} seconds")
+        logging.info(f"warping_time = {warping_time.value} seconds")
