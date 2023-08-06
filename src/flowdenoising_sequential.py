@@ -550,7 +550,7 @@ if __name__ == "__main__":
     logging.info(f"Output vol average = {filtered_vol.mean()}")
     
     if __debug__:
-        logging.info(f"writting \"{args.output}\"")
+        logging.info(f"writing \"{args.output}\"")
         time_0 = time.perf_counter()
 
     logging.debug(f"output = {args.output}")
@@ -564,7 +564,7 @@ if __name__ == "__main__":
             mrc.data
     else:
         if np.max(filtered_vol) < 256:
-            logging.debug(f"Writting TIFF file (uint8)")
+            logging.debug(f"Writing TIFF file (uint8)")
             skimage.io.imsave(args.output, filtered_vol.astype(np.uint8), plugin="tifffile")
         else:
             logging.debug(f"Writting TIFF file (uint16)")
