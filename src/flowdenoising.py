@@ -234,12 +234,13 @@ def OF_filter_along_Y(kernel, l, w):
                                   chunk_offsets,
                                   kernels):
                 logging.debug(f"PU #{_} finished")
-
     if __debug__:
         time_1 = time.perf_counter()
-        logging.debug(f"Filtering along Y spent {time_1 - time_0} seconds")
+        diff = time_1 - time_0
+        logging.debug(f"Filtering along Y spent {diff} seconds")
         logging.debug(f"Min OF val: {min_OF}")
         logging.debug(f"Max OF val: {max_OF}")
+        convolution_time.value += diff
 
 def OF_filter_along_X(kernel, l, w):
     global percent
@@ -277,10 +278,13 @@ def OF_filter_along_X(kernel, l, w):
                                   chunk_offsets,
                                   kernels):
                 logging.debug(f"PU #{_} finished")
-
     if __debug__:
         time_1 = time.perf_counter()
-        logging.debug(f"Filtering along X spent {time_1 - time_0} seconds")
+        diff = time_1 - time_0
+        logging.debug(f"Filtering along X spent {diff} seconds")
+        logging.debug(f"Min OF val: {min_OF}")
+        logging.debug(f"Max OF val: {max_OF}")
+        convolution_time.value += diff
 
 def OF_filter(kernels, l, w):
     OF_filter_along_Z(kernels[0], l, w)
@@ -659,3 +663,4 @@ if __name__ == "__main__":
         logging.info(f"written \"{args.output}\" in {time_1 - time_0} seconds")
         logging.info(f"OFE_time = {OFE_time.value} seconds")
         logging.info(f"warping_time = {warping_time.value} seconds")
+        logging.info(f"convolution_time = {convolution_time.value} seconds")
