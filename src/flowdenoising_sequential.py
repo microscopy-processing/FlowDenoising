@@ -580,12 +580,12 @@ if __name__ == "__main__":
     MRC_output = ( args.output.split('.')[-1] == "MRC" or args.output.split('.')[-1] == "mrc" )
 
     if MRC_output:
-        logging.debug(f"Writting MRC file")
+        logging.debug(f"Writing MRC file")
         with mrcfile.new(args.output, overwrite=True) as mrc:
             mrc.set_data(filtered_vol.astype(np.float32))
             mrc.data
     else:
-        logging.debug(f"Writting TIFF file")
+        logging.debug(f"Writing TIFF file")
         skimage.io.imsave(args.output, filtered_vol.astype(np.float32), plugin="tifffile")
 
     if __debug__:
