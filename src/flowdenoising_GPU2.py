@@ -39,14 +39,25 @@ from concurrent.futures.process import ProcessPoolExecutor
 
 LOGGING_FORMAT = "[%(asctime)s] (%(levelname)s) %(message)s"
 
-__percent__ = Value('f', 0)
+if __debug__:
+    # In shared memory
+    percent = Value('f', 0)
+    OFE_time = Value('f', 0)
+    warping_time = Value('f', 0)
+    convolution_time = Value('f', 0)
 
 def warp_slice(reference, flow):
+    if __debug__:
+        time_0 = time.perf_counter()
     height, width = flow.shape[:2]
     map_x = np.tile(np.arange(width), (height, 1))
     map_y = np.swapaxes(np.tile(np.arange(height), (width, 1)), 0, 1)
     map_xy = (flow + np.dstack((map_x, map_y))).astype('float32')
     warped_slice = cv2.remap(reference, map_xy, None, interpolation=cv2.INTER_LINEAR, borderMode=OFCA_EXTENSION_MODE)
+    if __debug__:
+        time_1 = time.perf_counter()
+        diff = time_1 - time_0
+        warping_time.value += diff
     return warped_slice
 
 def get_flow_GPU(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIZE, prev_flow=None):
@@ -71,7 +82,9 @@ def get_flow_GPU(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIZE, prev_flow=Non
     
     if __debug__:
         time_1 = time.perf_counter()
-        logging.debug(f"OF computed in {1000*(time_1 - time_0):4.3f} ms, max_X={np.max(flow[0]):+3.2f}, min_X={np.min(flow[0]):+3.2f}, max_Y={np.max(flow[1]):+3.2f}, min_Y={np.min(flow[1]):+3.2f}")
+        diff = time_1 - time_0
+        logging.debug(f"OF computed in {1000*(diff):4.3f} ms, max_X={np.max(flow[0]):+3.2f}, min_X={np.min(flow[0]):+3.2f}, max_Y={np.max(flow[1]):+3.2f}, min_Y={np.min(flow[1]):+3.2f}")
+        OFE_time.value += diff
     return flow
 
 def get_flow_CPU(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIZE, prev_flow=None):
@@ -81,7 +94,9 @@ def get_flow_CPU(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIZE, prev_flow=Non
     #flow = cv2.calcOpticalFlowFarneback(prev=target, next=reference, flow=None, pyr_scale=0.5, levels=l, winsize=w, iterations=OF_ITERS, poly_n=OF_POLY_N, poly_sigma=OF_POLY_SIGMA, flags=0)
     if __debug__:
         time_1 = time.perf_counter()
-        logging.debug(f"OF computed in {1000*(time_1 - time_0):4.3f} ms, max_X={np.max(flow[0]):+3.2f}, min_X={np.min(flow[0]):+3.2f}, max_Y={np.max(flow[1]):+3.2f}, min_Y={np.min(flow[1]):+3.2f}")
+        diff = time_1 - time_0
+        logging.debug(f"OF computed in {1000*(diff):4.3f} ms, max_X={np.max(flow[0]):+3.2f}, min_X={np.min(flow[0]):+3.2f}, max_Y={np.max(flow[1]):+3.2f}, min_Y={np.min(flow[1]):+3.2f}")
+        OFE_time.value += diff
     return flow
 
 get_flow = get_flow_GPU
@@ -106,7 +121,7 @@ def OF_filter_along_Z_slice(z, kernel):
         OF_compensated_slice = warp_slice(vol[(z + i - ks2) % vol.shape[0], :, :], flow)
         tmp_slice += OF_compensated_slice * kernel[i]
     filtered_vol[z, :, :] = tmp_slice
-    __percent__.value += 1
+    percent.value += 1
 
 def OF_filter_along_Y_slice(y, kernel):
     ks2 = kernel.size//2
@@ -128,7 +143,7 @@ def OF_filter_along_Y_slice(y, kernel):
         OF_compensated_slice = warp_slice(vol[:, (y + i - ks2) % vol.shape[1], :], flow)
         tmp_slice += OF_compensated_slice * kernel[i]
     filtered_vol[:, y, :] = tmp_slice
-    __percent__.value += 1
+    percent.value += 1
 
 def OF_filter_along_X_slice(x, kernel):
     ks2 = kernel.size//2
@@ -150,7 +165,7 @@ def OF_filter_along_X_slice(x, kernel):
         OF_compensated_slice = warp_slice(vol[:, :, (x + i - ks2) % vol.shape[2]], flow)
         tmp_slice += OF_compensated_slice * kernel[i]
     filtered_vol[:, :, x] = tmp_slice
-    __percent__.value += 1
+    percent.value += 1
 
 def OF_filter_along_Z_chunk(chunk_index, chunk_size, chunk_offset, kernel):
     #cv2.cuda.setDevice(chunk_index)
@@ -169,8 +184,13 @@ def OF_filter_along_X_chunk(chunk_index, chunk_size, chunk_offset, kernel):
     return chunk_index
     
 def OF_filter_along_Z(kernel, l, w):
-    global __percent__
-    logging.info(f"Filtering along Z with l={l}, w={w}, and kernel length={kernel.size}")
+    global percent
+
+    if __debug__:
+        logging.info(f"Filtering along Z with l={l}, w={w}, and kernel length={kernel.size}")
+        time_0 = time.perf_counter()
+        min_OF = 1000
+        max_OF = -1000
 
     if __debug__:
         time_0 = time.perf_counter()
@@ -207,12 +227,14 @@ def OF_filter_along_Z(kernel, l, w):
                 logging.debug(f"PU #{_} finished")
     if __debug__:
         time_1 = time.perf_counter()
-        logging.debug(f"Filtering along Z spent {time_1 - time_0} seconds")
+        diff = time_1 - time_0
+        logging.debug(f"Filtering along Z spent {diff} seconds")
         logging.debug(f"Min OF val: {min_OF}")
         logging.debug(f"Max OF val: {max_OF}")
+        convolution_time.value += diff
 
 def OF_filter_along_Y(kernel, l, w):
-    global __percent__
+    global percent
     logging.info(f"Filtering along Y with l={l}, w={w}, and kernel length={kernel.size}")
     if __debug__:
         time_0 = time.perf_counter()
@@ -255,7 +277,7 @@ def OF_filter_along_Y(kernel, l, w):
         logging.debug(f"Max OF val: {max_OF}")
 
 def OF_filter_along_X(kernel, l, w):
-    global __percent__
+    global percent
     logging.info(f"Filtering along X with l={l}, w={w}, and kernel length={kernel.size}")
     if __debug__:
         time_0 = time.perf_counter()
@@ -308,7 +330,7 @@ def no_OF_filter_along_Z_slice(z, kernel):
     for i in range(kernel.size):
         tmp_slice += vol[(z + i - ks2) % vol.shape[0], :, :]*kernel[i]
     filtered_vol[z, :, :] = tmp_slice
-    __percent__.value += 1
+    percent.value += 1
 
 def no_OF_filter_along_Y_slice(y, kernel):
     ks2 = kernel.size//2
@@ -316,7 +338,7 @@ def no_OF_filter_along_Y_slice(y, kernel):
     for i in range(kernel.size):
         tmp_slice += vol[:, (y + i - ks2) % vol.shape[1], :]*kernel[i]
     filtered_vol[:, y, :] = tmp_slice
-    __percent__.value += 1
+    percent.value += 1
 
 def no_OF_filter_along_X_slice(x, kernel):
     ks2 = kernel.size//2
@@ -324,7 +346,7 @@ def no_OF_filter_along_X_slice(x, kernel):
     for i in range(kernel.size):
         tmp_slice += vol[:, :, (x + i - ks2) % vol.shape[2]]*kernel[i]
     filtered_vol[:, :, x] = tmp_slice
-    __percent__.value += 1
+    percent.value += 1
 
 def no_OF_filter_along_Z_chunk(chunk_index, chunk_size, chunk_offset, kernel):
     for z in range(chunk_size):
@@ -473,7 +495,7 @@ def int_or_str(text):
 
 def feedback():
     while True:
-        logging.info(f"{100*__percent__.value/np.sum(vol.shape):3.2f} % completed")
+        logging.info(f"{100*percent.value/np.sum(vol.shape):3.2f} % completed")
         time.sleep(1)
 
 number_of_PUs = multiprocessing.cpu_count()
