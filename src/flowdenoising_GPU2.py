@@ -45,6 +45,7 @@ if __debug__:
     OFE_time = Value('f', 0)
     warping_time = Value('f', 0)
     convolution_time = Value('f', 0)
+    transference_time = Value('f', 0)
 
 def warp_slice(reference, flow):
     if __debug__:
@@ -69,6 +70,8 @@ def get_flow_GPU(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIZE, prev_flow=Non
     GPU_reference.upload(reference)
     GPU_prev_flow = cv2.cuda_GpuMat()
     GPU_prev_flow.upload(prev_flow)
+    if __debug__:
+        transference_time.value += (time.perf_counter() - time_0)
 
     # create optical flow instance
     flower = cv2.cuda_FarnebackOpticalFlow.create(numLevels=l, pyrScale=0.5, fastPyramids=False, winSize=w, numIters=OF_ITERS, polyN=OF_POLY_N, polySigma=OF_POLY_SIGMA, flags=cv2.OPTFLOW_USE_INITIAL_FLOW)
@@ -78,7 +81,11 @@ def get_flow_GPU(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIZE, prev_flow=Non
     #gpu_flow = cv2.cuda.FarnebackOpticalFlow.calc(flower, I0=gpu_target, I1=gpu_reference, flow=None)
     GPU_flow = cv2.cuda.FarnebackOpticalFlow.calc(flower, I0=GPU_target, I1=GPU_reference, flow=GPU_prev_flow)
 
+    if __debug__:
+        time_2 = time.perf_counter()
     flow = GPU_flow.download()
+    if __debug__:
+        transference_time.value += (time.perf_counter() - time_2)
     
     if __debug__:
         time_1 = time.perf_counter()
@@ -235,8 +242,8 @@ def OF_filter_along_Z(kernel, l, w):
 
 def OF_filter_along_Y(kernel, l, w):
     global percent
-    logging.info(f"Filtering along Y with l={l}, w={w}, and kernel length={kernel.size}")
     if __debug__:
+        logging.info(f"Filtering along Y with l={l}, w={w}, and kernel length={kernel.size}")
         time_0 = time.perf_counter()
         min_OF = 1000
         max_OF = -1000
@@ -272,14 +279,16 @@ def OF_filter_along_Y(kernel, l, w):
 
     if __debug__:
         time_1 = time.perf_counter()
-        logging.debug(f"Filtering along Y spent {time_1 - time_0} seconds")
+        diff = time_1 - time_0
+        logging.debug(f"Filtering along Y spent {diff} seconds")
         logging.debug(f"Min OF val: {min_OF}")
         logging.debug(f"Max OF val: {max_OF}")
+        convolution_time.value += diff
 
 def OF_filter_along_X(kernel, l, w):
     global percent
-    logging.info(f"Filtering along X with l={l}, w={w}, and kernel length={kernel.size}")
     if __debug__:
+        logging.info(f"Filtering along X with l={l}, w={w}, and kernel length={kernel.size}")
         time_0 = time.perf_counter()
         min_OF = 1000
         max_OF = -1000
@@ -315,7 +324,11 @@ def OF_filter_along_X(kernel, l, w):
 
     if __debug__:
         time_1 = time.perf_counter()
-        logging.debug(f"Filtering along X spent {time_1 - time_0} seconds")
+        diff = time_1 - time_0
+        logging.debug(f"Filtering along X spent {diff} seconds")
+        logging.debug(f"Min OF val: {min_OF}")
+        logging.debug(f"Max OF val: {max_OF}")
+        convolution_time.value += diff
 
 def OF_filter(kernels, l, w):
     OF_filter_along_Z(kernels[0], l, w)
@@ -364,9 +377,9 @@ def no_OF_filter_along_X_chunk(chunk_index, chunk_size, chunk_offset, kernel):
     return chunk_index
 
 def no_OF_filter_along_Z(kernel):
-    logging.info(f"Filtering along Z with kernel length={kernel.size}")
 
     if __debug__:
+        logging.info(f"Filtering along Z with kernel length={kernel.size}")
         time_0 = time.perf_counter()
 
     Z_dim = vol.shape[0]
@@ -403,9 +416,9 @@ def no_OF_filter_along_Z(kernel):
         logging.debug(f"Filtering along Z spent {time_1 - time_0} seconds")
 
 def no_OF_filter_along_Y(kernel):
-    logging.info(f"Filtering along Y with kernel length={kernel.size}")
 
     if __debug__:
+        logging.info(f"Filtering along Y with kernel length={kernel.size}")
         time_0 = time.perf_counter()
 
     Y_dim = vol.shape[1]
@@ -442,8 +455,9 @@ def no_OF_filter_along_Y(kernel):
         logging.debug(f"Filtering along Y spent {time_1 - time_0} seconds")
 
 def no_OF_filter_along_X(kernel):
-    logging.info(f"Filtering along X with kernel length={kernel.size}")
+
     if __debug__:
+        logging.info(f"Filtering along X with kernel length={kernel.size}")
         time_0 = time.perf_counter()
 
     X_dim = vol.shape[2]
@@ -560,10 +574,12 @@ if __name__ == "__main__":
     #    get_flow = get_flow_with_prev_flow
     #    logging.info("Using adjacent OF fields as predictions")
 
-    logging.info(f"Number of processing units: {number_of_PUs}")
+    if __debug__:
+        logging.info(f"Number of processing units: {number_of_PUs}")
         
     sigma = [float(i) for i in args.sigma]
-    logging.info(f"sigma={tuple(sigma)}")
+    if __debug__:
+        logging.info(f"sigma={tuple(sigma)}")
     l = args.levels
     w = args.winsize
     
@@ -574,8 +590,7 @@ if __name__ == "__main__":
     if __debug__:
         logging.info(f"reading \"{args.input}\"")
         time_0 = time.perf_counter()
-
-    logging.debug(f"input = {args.input}")
+        logging.debug(f"input = {args.input}")
 
     MRC_input = ( args.input.split('.')[-1] == "MRC" or args.input.split('.')[-1] == "mrc" )
     if MRC_input:
@@ -588,13 +603,14 @@ if __name__ == "__main__":
     else:
         vol = skimage.io.imread(args.input, plugin="tifffile").astype(np.float32)
     vol_size = vol.dtype.itemsize * vol.size
-    logging.info(f"shape of the input volume (Z, Y, X) = {vol.shape}")
-    logging.info(f"type of the volume = {vol.dtype}")
-    logging.info(f"vol requires {vol_size/(1024*1024):.1f} MB")
-    logging.info(f"{args.input} max = {vol.max()}")
-    logging.info(f"{args.input} min = {vol.min()}")
-    vol_mean = vol.mean()
-    logging.info(f"Input vol average = {vol_mean}")
+    if __debug__:
+        logging.info(f"shape of the input volume (Z, Y, X) = {vol.shape}")
+        logging.info(f"type of the volume = {vol.dtype}")
+        logging.info(f"vol requires {vol_size/(1024*1024):.1f} MB")
+        logging.info(f"{args.input} max = {vol.max()}")
+        logging.info(f"{args.input} min = {vol.min()}")
+        vol_mean = vol.mean()
+        logging.info(f"Input vol average = {vol_mean}")
 
     if __debug__:
         time_1 = time.perf_counter()
@@ -604,7 +620,8 @@ if __name__ == "__main__":
     kernels[0] = get_gaussian_kernel(sigma[0])
     kernels[1] = get_gaussian_kernel(sigma[1])
     kernels[2] = get_gaussian_kernel(sigma[2])
-    logging.info(f"length of each filter (Z, Y, X) = {[len(i) for i in [*kernels]]}")
+    if __debug__:
+        logging.info(f"length of each filter (Z, Y, X) = {[len(i) for i in [*kernels]]}")
 
     # Copy the volume to shared memory
     SM_vol = shared_memory.SharedMemory(
@@ -631,9 +648,11 @@ if __name__ == "__main__":
     #vol = np.transpose(vol, transpose_pattern)
     #logging.info(f"After transposing, shape of the volume to denoise (Z, Y, X) = {vol.shape}")
 
-    logging.info(f"Number of available processing units: {number_of_PUs}")
+    if __debug__:
+        logging.info(f"Number of available processing units: {number_of_PUs}")
     number_of_processes = args.number_of_processes
-    logging.info(f"Number of concurrent processes: {number_of_processes}")
+    if __debug__:
+        logging.info(f"Number of concurrent processes: {number_of_processes}")
     
     thread = threading.Thread(target=feedback)
     thread.daemon = True # To obey CTRL+C interruption.
@@ -655,26 +674,28 @@ if __name__ == "__main__":
         logging.info(f"Volume filtered in {time_1 - time_0} seconds")
 
     #filtered_vol = np.transpose(filtered_vol, transpose_pattern)
-    logging.info(f"{args.output} type = {filtered_vol.dtype}")
-    logging.info(f"{args.output} max = {filtered_vol.max()}")
-    logging.info(f"{args.output} min = {filtered_vol.min()}")
-    logging.info(f"{args.output} average = {filtered_vol.mean()}")
+    if __debug__:
+        logging.info(f"{args.output} type = {filtered_vol.dtype}")
+        logging.info(f"{args.output} max = {filtered_vol.max()}")
+        logging.info(f"{args.output} min = {filtered_vol.min()}")
+        logging.info(f"{args.output} average = {filtered_vol.mean()}")
     
     if __debug__:
         logging.info(f"writting \"{args.output}\"")
         time_0 = time.perf_counter()
-
-    logging.debug(f"output = {args.output}")
+        logging.debug(f"output = {args.output}")
 
     MRC_output = ( args.output.split('.')[-1] == "MRC" or args.output.split('.')[-1] == "mrc" )
 
     if MRC_output:
-        logging.debug(f"Writting MRC file")
+        if __debug__:
+            logging.debug(f"Writting MRC file")
         with mrcfile.new(args.output, overwrite=True) as mrc:
             mrc.set_data(filtered_vol.astype(np.float32))
             mrc.data
     else:
-        logging.debug(f"Writting TIFF file")
+        if __debug__:
+            logging.debug(f"Writting TIFF file")
         skimage.io.imsave(args.output, filtered_vol.astype(np.float32), plugin="tifffile")
 
     SM_vol.close()
@@ -685,3 +706,8 @@ if __name__ == "__main__":
     if __debug__:
         time_1 = time.perf_counter()        
         logging.info(f"written \"{args.output}\" in {time_1 - time_0} seconds")
+        logging.info(f"OFE_time = {OFE_time.value} seconds")
+        logging.info(f"warping_time = {warping_time.value} seconds")
+        logging.info(f"convolution_time = {convolution_time.value} seconds")
+        logging.info(f"transference_time = {transference_time.value} seconds")
+        

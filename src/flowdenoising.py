@@ -542,7 +542,6 @@ if __name__ == "__main__":
     if __debug__:
         logging.info(f"reading \"{args.input}\"")
         time_0 = time.perf_counter()
-
         logging.debug(f"input = {args.input}")
 
     MRC_input = ( args.input.split('.')[-1] == "MRC" or args.input.split('.')[-1] == "mrc" )
@@ -637,8 +636,7 @@ if __name__ == "__main__":
     if __debug__:
         logging.info(f"writing \"{args.output}\"")
         time_0 = time.perf_counter()
-
-    logging.debug(f"output = {args.output}")
+        logging.debug(f"output = {args.output}")
 
     MRC_output = ( args.output.split('.')[-1] == "MRC" or args.output.split('.')[-1] == "mrc" )
 
