@@ -22,7 +22,8 @@ import mrcfile
 import argparse
 import threading
 import time
-
+import sys
+import hashlib
 import concurrent
 import multiprocessing
 from multiprocessing import shared_memory, Value
@@ -507,8 +508,15 @@ def show_memory_usage(msg=''):
     logging.info(f"{psutil.Process(os.getpid()).memory_info().rss/(1024*1024):.1f} MB used in process {os.getpid()} {msg}")
 
 if __name__ == "__main__":
-
+    print ("Python version =", sys.version)
+    hash_algorithm = hashlib.new(name="sha256")
+    with open("flowdenoising.py", "rb") as file:
+        while chunk := file.read(512):
+            hash_algorithm.update(chunk)
     parser.description = __doc__
+    checksum = hash_algorithm.hexdigest()
+    print("checksum of flowdenoising.py =", checksum)
+    
     args = parser.parse_args()
 
     if args.verbosity == 2:
