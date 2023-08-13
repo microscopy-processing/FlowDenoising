@@ -520,6 +520,8 @@ def show_memory_usage(msg=''):
     logging.info(f"{psutil.Process(os.getpid()).memory_info().rss/(1024*1024):.1f} MB used in process {os.getpid()} {msg}")
 
 if __name__ == "__main__":
+    global get_flow
+    
     print ("Python version =", sys.version)
     hash_algorithm = hashlib.new(name="sha256")
     with open("flowdenoising.py", "rb") as file:
