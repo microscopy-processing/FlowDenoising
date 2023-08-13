@@ -82,7 +82,7 @@ def get_flow_without_prev_flow(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIZE,
         logging.debug(f"OF computed in {1000*(time_1 - time_0):4.3f} ms, max_X={np.max(flow[0]):+3.2f}, min_X={np.min(flow[0]):+3.2f}, max_Y={np.max(flow[1]):+3.2f}, min_Y={np.min(flow[1]):+3.2f}")
     return flow
 
-def OF_filter_along_Z_slice(vol, z, kernel, get_flow):
+def OF_filter_along_Z_slice(vol, z, kernel, l, w, get_flow):
     ks2 = kernel.size//2
     tmp_slice = np.zeros_like(vol[z, :, :]).astype(np.float32)
     assert kernel.size % 2 != 0 # kernel.size must be odd
@@ -104,7 +104,7 @@ def OF_filter_along_Z_slice(vol, z, kernel, get_flow):
     filtered_vol[z, :, :] = tmp_slice
     __percent__.value += 1
 
-def OF_filter_along_Y_slice(vol, y, kernel, get_flow):
+def OF_filter_along_Y_slice(vol, y, kernel, l, w, get_flow):
     ks2 = kernel.size//2
     tmp_slice = np.zeros_like(vol[:, y, :]).astype(np.float32)
     assert kernel.size % 2 != 0 # kernel.size must be odd
@@ -126,7 +126,7 @@ def OF_filter_along_Y_slice(vol, y, kernel, get_flow):
     filtered_vol[:, y, :] = tmp_slice
     __percent__.value += 1
 
-def OF_filter_along_X_slice(vol, x, kernel, get_flow):
+def OF_filter_along_X_slice(vol, x, kernel, l, w, get_flow):
     ks2 = kernel.size//2
     tmp_slice = np.zeros_like(vol[:, :, x]).astype(np.float32)
     assert kernel.size % 2 != 0 # kernel.size must be odd
@@ -148,21 +148,21 @@ def OF_filter_along_X_slice(vol, x, kernel, get_flow):
     filtered_vol[:, :, x] = tmp_slice
     __percent__.value += 1
 
-def OF_filter_along_Z_chunk(vol, chunk_index, chunk_size, chunk_offset, kernel, get_flow):
+def OF_filter_along_Z_chunk(vol, chunk_index, chunk_size, chunk_offset, kernel, l, w, get_flow):
     for z in range(chunk_size):
-        OF_filter_along_Z_slice(vol, chunk_index*chunk_size + z + chunk_offset, kernel, get_flow)
+        OF_filter_along_Z_slice(vol, chunk_index*chunk_size + z + chunk_offset, kernel, l, w, get_flow)
     return chunk_index
 
-def OF_filter_along_Y_chunk(vol, chunk_index, chunk_size, chunk_offset, kernel, get_flow):
+def OF_filter_along_Y_chunk(vol, chunk_index, chunk_size, chunk_offset, kernel, l, w, get_flow):
     for y in range(chunk_size):
-        OF_filter_along_Y_slice(vol, chunk_index*chunk_size + y + chunk_offset, kernel, get_flow)
+        OF_filter_along_Y_slice(vol, chunk_index*chunk_size + y + chunk_offset, kernel, l, w, get_flow)
     return chunk_index
 
-def OF_filter_along_X_chunk(vol, chunk_index, chunk_size, chunk_offset, kernel, get_flow):
+def OF_filter_along_X_chunk(vol, chunk_index, chunk_size, chunk_offset, kernel, l, w, get_flow):
     for x in range(chunk_size):
-        OF_filter_along_X_slice(vol, chunk_index*chunk_size + x + chunk_offset, kernel, get_flow)
+        OF_filter_along_X_slice(vol, chunk_index*chunk_size + x + chunk_offset, kernel, l, w, get_flow)
     return chunk_index
-    
+
 def OF_filter_along_Z(vol, kernel, l, w, get_flow):
     global __percent__
     logging.info(f"Filtering along Z with l={l}, w={w}, and kernel length={kernel.size}")
@@ -182,6 +182,8 @@ def OF_filter_along_Z(vol, kernel, l, w, get_flow):
     kernels = [kernel]*number_of_processes
     vols = [vol]*number_of_processes
     get_flows = [get_flow]*number_of_processes
+    ls = [l]*number_of_processes
+    ws = [w]*number_of_processes
     with ProcessPoolExecutor(max_workers=number_of_processes) as executor:
         for _ in executor.map(OF_filter_along_Z_chunk,
                               vols,
@@ -189,6 +191,7 @@ def OF_filter_along_Z(vol, kernel, l, w, get_flow):
                               chunk_sizes,
                               chunk_offsets,
                               kernels,
+                              ls, ws,
                               get_flows):
             logging.debug(f"PE #{_} has finished")
     remainding_slices = Z_dim % number_of_processes
@@ -199,6 +202,8 @@ def OF_filter_along_Z(vol, kernel, l, w, get_flow):
         kernels = [kernel]*remainding_slices
         vols = [vol]*remainding_slices
         get_flows = [get_flow]*remainding_slices
+        ls = [l]*remainding_slices
+        ws = [w]*remainding_slices
         with ProcessPoolExecutor(max_workers=remainding_slices) as executor:
             for _ in executor.map(OF_filter_along_Z_chunk,
                                   vols,
@@ -206,6 +211,7 @@ def OF_filter_along_Z(vol, kernel, l, w, get_flow):
                                   chunk_sizes,
                                   chunk_offsets,
                                   kernels,
+                                  ls, ws,
                                   get_flows):
                 logging.debug(f"PU #{_} finished")
     if __debug__:
@@ -232,6 +238,8 @@ def OF_filter_along_Y(vol, kernel, l, w, get_flow):
     kernels = [kernel]*number_of_processes
     vols = [vol]*number_of_processes
     get_flows = [get_flow]*number_of_processes
+    ls = [l]*number_of_processes
+    ws = [w]*number_of_processes
     with ProcessPoolExecutor(max_workers=number_of_processes) as executor:
         for _ in executor.map(OF_filter_along_Y_chunk,
                               vols,
@@ -239,6 +247,7 @@ def OF_filter_along_Y(vol, kernel, l, w, get_flow):
                               chunk_sizes,
                               chunk_offsets,
                               kernels,
+                              ls, ws,
                               get_flows):
             logging.debug(f"PE #{_} has finished")
     remainding_slices = Y_dim % number_of_processes
@@ -249,6 +258,8 @@ def OF_filter_along_Y(vol, kernel, l, w, get_flow):
         kernels = [kernel]*remainding_slices
         vols = [vol]*remainding_slices
         get_flows = [get_flow]*remainding_slices
+        ls = [l]*remainding_slices
+        ws = [w]*remainding_slices
         with ProcessPoolExecutor(max_workers=remainding_slices) as executor:
             for _ in executor.map(OF_filter_along_Y_chunk,
                                   vols,
@@ -256,6 +267,7 @@ def OF_filter_along_Y(vol, kernel, l, w, get_flow):
                                   chunk_sizes,
                                   chunk_offsets,
                                   kernels,
+                                  ls, ws,
                                   get_flows):
                 logging.debug(f"PU #{_} finished")
 
@@ -283,6 +295,8 @@ def OF_filter_along_X(vol, kernel, l, w, get_flow):
     kernels = [kernel]*number_of_processes
     vols = [vol]*number_of_processes
     get_flows = [get_flow]*number_of_processes
+    ls = [l]*number_of_processes
+    ws = [w]*number_of_processes
     with ProcessPoolExecutor(max_workers=number_of_processes) as executor:
         for _ in executor.map(OF_filter_along_X_chunk,
                               vols,
@@ -290,6 +304,7 @@ def OF_filter_along_X(vol, kernel, l, w, get_flow):
                               chunk_sizes,
                               chunk_offsets,
                               kernels,
+                              ls, ws,
                               get_flows):
             logging.debug(f"PE #{_} has finished")
     remainding_slices = X_dim % number_of_processes
@@ -300,6 +315,8 @@ def OF_filter_along_X(vol, kernel, l, w, get_flow):
         kernels = [kernel]*remainding_slices
         vols = [vol]*remainding_slices
         get_flows = [get_flow]*remainding_slices
+        ls = [l]*remainding_slices
+        ws = [w]*remainding_slices
         with ProcessPoolExecutor(max_workers=remainding_slices) as executor:
             for _ in executor.map(OF_filter_along_X_chunk,
                                   vols,
@@ -307,6 +324,7 @@ def OF_filter_along_X(vol, kernel, l, w, get_flow):
                                   chunk_sizes,
                                   chunk_offsets,
                                   kernels,
+                                  ls, ws,
                                   get_flows):
                 logging.debug(f"PU #{_} finished")
 
