@@ -524,7 +524,7 @@ def no_OF_filter_along_X(kernel):
         time_1 = time.perf_counter()
         logging.debug(f"Filtering along X spent {time_1 - time_0} seconds")
 
-def no_OF_filter((vol, filtered_vol, kernels, l, w, get_flow):
+def no_OF_filter(vol, filtered_vol, kernels, l, w, get_flow):
     no_OF_filter_along_Z(vol, filtered_vol, kernels[0], l, w, get_flow)
     vol[...] = filtered_vol[...]
     no_OF_filter_along_Y(vol, filtered_vol, kernels[1], l, w, get_flow)

@@ -32,6 +32,10 @@ from concurrent.futures.process import ProcessPoolExecutor
 LOGGING_FORMAT = "[%(asctime)s] (%(levelname)s) %(message)s"
 
 __percent__ = Value('f', 0)
+vol = None
+filtered_vol = None
+l = 0
+w = 0
 
 def get_gaussian_kernel(sigma=1):
     logging.info(f"Computing gaussian kernel with sigma={sigma}")
