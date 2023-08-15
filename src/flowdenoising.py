@@ -26,7 +26,7 @@ import sys
 import hashlib
 import concurrent
 import multiprocessing
-from multiprocessing import shared_memory, Value
+from multiprocessing import shared_memory, Value #, Array
 from concurrent.futures.process import ProcessPoolExecutor
 
 LOGGING_FORMAT = "[%(asctime)s] (%(levelname)s) %(message)s"
@@ -376,8 +376,11 @@ def no_OF_filter_along_X_slice(vol, filtered_vol, x, kernel):
     __percent__.value += 1
 
 def no_OF_filter_along_Z_chunk(vol, filtered_vol, chunk_index, chunk_size, chunk_offset, kernel):
+    print("no_OF_filter_Z_chunk", id(filtered_vol))
     for z in range(chunk_size):
         no_OF_filter_along_Z_slice(vol, filtered_vol, chunk_index*chunk_size + z + chunk_offset, kernel)
+    #print(id(filtered_vol))
+    #print("--------------_", np.max(filtered_vol))
     return chunk_index
 
 def no_OF_filter_along_Y_chunk(vol, filtered_vol, chunk_index, chunk_size, chunk_offset, kernel):
@@ -406,6 +409,10 @@ def no_OF_filter_along_Z(vol, filtered_vol, kernel):
     kernels = [kernel]*number_of_processes
     vols = [vol]*number_of_processes
     filtered_vols = [filtered_vol]*number_of_processes
+    print("no_OF_filter_along_Z", id(filtered_vol))
+    for i in filtered_vols:
+        print(id(i))
+    print("antes --------------_", np.max(vol), np.max(filtered_vol))
     with ProcessPoolExecutor(max_workers=number_of_processes) as executor:
         for _ in executor.map(no_OF_filter_along_Z_chunk,
                               vols,
@@ -415,7 +422,8 @@ def no_OF_filter_along_Z(vol, filtered_vol, kernel):
                               chunk_offsets,
                               kernels):
             logging.debug(f"PU #{_} finished")
-    print("--------------_", np.max(filtered_vol))
+    print("no_OF_filter_along_Z", id(filtered_vol))
+    print("despues --------------_", np.max(vol), np.max(filtered_vol))
     remaining_slices = Z_dim % number_of_processes
     if remaining_slices > 0:
         chunk_indexes = [i for i in range(remaining_slices)]
@@ -680,7 +688,9 @@ if __name__ == "__main__":
         shape=vol.shape,
         dtype=vol.dtype,
         buffer=SM_filtered_vol.buf)
+    #filtered_vol = Array('f', vol.shape)
     filtered_vol.fill(0)
+    #print(id(filtered_vol))
     
     #vol = np.transpose(vol, transpose_pattern)
     #logging.info(f"After transposing, shape of the volume to denoise (Z, Y, X) = {vol.shape}")
