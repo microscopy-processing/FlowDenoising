@@ -26,7 +26,6 @@ import sys
 import hashlib
 import concurrent
 import multiprocessing
-#from multiprocessing import shared_memory, Value #, Array
 from concurrent.futures import ThreadPoolExecutor as PoolExecutor
 
 LOGGING_FORMAT = "[%(asctime)s] (%(levelname)s) %(message)s"
@@ -493,7 +492,6 @@ if __name__ == "__main__":
 
     if __debug__:
         logging.info(f"Filtering ...")
-        #time_0 = time.perf_counter()
         time_0 = time.perf_counter()
 
     logging.info(f"{args.input} type = {vol.dtype}")
@@ -521,7 +519,6 @@ if __name__ == "__main__":
     filtered_vol = vol.copy()
 
     if __debug__:
-        #time_1 = time.perf_counter()        
         time_1 = time.perf_counter()        
         logging.info(f"Volume filtered in {time_1 - time_0} seconds")
 
@@ -548,11 +545,6 @@ if __name__ == "__main__":
     else:
         logging.debug(f"Writting TIFF file")
         skimage.io.imsave(args.output, filtered_vol.astype(np.float32), plugin="tifffile")
-
-    #SM_vol.close()
-    #SM_vol.unlink()
-    #SM_filtered_vol.close()
-    #SM_filtered_vol.unlink()
     
     if __debug__:
         time_1 = time.perf_counter()        
