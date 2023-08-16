@@ -412,20 +412,23 @@ parser.add_argument("-p", "--number_of_processes", type=int_or_str,
                     default=number_of_PUs)
 parser.add_argument("--recompute_flow", action="store_true", help="Disable the use of adjacent optical flow fields")
 
+parser.add_argument("--show_fingerprint", action="store_true", help="Show a hash of this file (you must run it in the folder that contains flowdenoising.py)")
+
 def show_memory_usage(msg=''):
     logging.info(f"{psutil.Process(os.getpid()).memory_info().rss/(1024*1024):.1f} MB used in process {os.getpid()} {msg}")
 
 if __name__ == "__main__":    
-    print ("Python version =", sys.version)
-    hash_algorithm = hashlib.new(name="sha256")
-    with open("flowdenoising.py", "rb") as file:
-        while chunk := file.read(512):
-            hash_algorithm.update(chunk)
     parser.description = __doc__
-    fingerprint = hash_algorithm.hexdigest()
-    print("fingerprint =", fingerprint)
+    print ("Python version =", sys.version)
     
     args = parser.parse_args()
+    if args.show_fingerprint:
+        hash_algorithm = hashlib.new(name="sha256")
+        with open("flowdenoising.py", "rb") as file:
+            while chunk := file.read(512):
+                hash_algorithm.update(chunk)
+        fingerprint = hash_algorithm.hexdigest()
+        print("fingerprint =", fingerprint)
 
     if args.verbosity == 2:
         logging.basicConfig(format=LOGGING_FORMAT, level=logging.DEBUG)
