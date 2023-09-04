@@ -313,15 +313,15 @@ class FlowDenoising(GaussianDenoising):
                                  self.vol[z, :, :], l, w, prev_flow)
             prev_flow = flow
             OF_compensated_slice = self.warp_slice(self.vol[(z + i - ks2) % self.vol.shape[0], :, :], flow)
-            tmp_slice += OF_compensated_slice * kernel[i]
-        tmp_slice += self.vol[z, :, :] * kernel[ks2]
+            tmp_slice += OF_compensated_slice*kernel[i]
+        tmp_slice += self.vol[z, :, :]*kernel[ks2]
         prev_flow = np.zeros(shape=(self.vol.shape[1], self.vol.shape[2], 2), dtype=np.float32)
         for i in range(ks2 + 1, kernel.size):
             flow = self.get_flow(self.vol[(z + i - ks2) % self.vol.shape[0], :, :],
                                  self.vol[z, :, :], l, w, prev_flow)
             prev_flow = flow
             OF_compensated_slice = self.warp_slice(self.vol[(z + i - ks2) % self.vol.shape[0], :, :], flow)
-            tmp_slice += OF_compensated_slice * kernel[i]
+            tmp_slice += OF_compensated_slice*kernel[i]
         self.filtered_vol[z, :, :] = tmp_slice
         if __debug__:
             self.progress += 1
@@ -336,15 +336,15 @@ class FlowDenoising(GaussianDenoising):
                                  self.vol[:, y, :], l, w, prev_flow)
             prev_flow = flow
             OF_compensated_slice = self.warp_slice(self.vol[:, (y + i - ks2) % self.vol.shape[1], :], flow)
-            tmp_slice += OF_compensated_slice * kernel[i]
-        tmp_slice += self.vol[:, y, :] * kernel[ks2]
+            tmp_slice += OF_compensated_slice*kernel[i]
+        tmp_slice += self.vol[:, y, :]*kernel[ks2]
         prev_flow = np.zeros(shape=(self.vol.shape[0], self.vol.shape[2], 2), dtype=np.float32)
         for i in range(ks2 + 1, kernel.size):
             flow = self.get_flow(self.vol[:, (y + i - ks2) % self.vol.shape[1], :],
                                  self.vol[:, y, :], l, w, prev_flow)
             prev_flow = flow
             OF_compensated_slice = self.warp_slice(self.vol[:, (y + i - ks2) % self.vol.shape[1], :], flow)
-            tmp_slice += OF_compensated_slice * kernel[i]
+            tmp_slice += OF_compensated_slice*kernel[i]
         self.filtered_vol[:, y, :] = tmp_slice
         if __debug__:
             self.progress += 1
@@ -359,8 +359,8 @@ class FlowDenoising(GaussianDenoising):
                                  self.vol[:, :, x], l, w, prev_flow)
             prev_flow = flow
             OF_compensated_slice = self.warp_slice(self.vol[:, :, (x + i - ks2) % self.vol.shape[2]], flow)
-            tmp_slice += OF_compensated_slice * kernel[i]
-        tmp_slice += self.vol[:, :, x] * kernel[ks2]
+            tmp_slice += OF_compensated_slice*kernel[i]
+        tmp_slice += self.vol[:, :, x]*kernel[ks2]
         prev_flow = np.zeros(shape=(self.vol.shape[0], self.vol.shape[1], 2), dtype=np.float32)
         for i in range(ks2 + 1, kernel.size):
             flow = get_flow(self.vol[:, :, (x + i - ks2) % self.vol.shape[2]],
