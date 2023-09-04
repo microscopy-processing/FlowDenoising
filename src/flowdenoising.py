@@ -2,7 +2,8 @@
 '''3D Gaussian filtering controlled by the optical flow.
 '''
 
-# "flowdenoising.py" is part of "https://github.com/microscopy-processing/FlowDenoising", authored by:
+# "flowdenoising.py" is part of "https://github.com/microscopy-processing/FlowDenoising",
+# authored by:
 #
 # * J.J. Fernández (CSIC).
 # * V. González-Ruiz (UAL).
