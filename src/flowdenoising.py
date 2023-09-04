@@ -8,7 +8,7 @@
 # * J.J. Fernández (CSIC).
 # * V. González-Ruiz (UAL).
 #
-# Please, refer to the LICENSE.txt to know the terms of usage of this software.
+# Please, refer to the file LICENSE.txt to know the terms of usage of this software.
 
 import logging
 import os
