@@ -73,6 +73,8 @@ def get_flow_GPU(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIZE, prev_flow=Non
     if __debug__:
         transference_time.value += (time.perf_counter() - time_0)
 
+    if __debug__:
+        time_0 = time.perf_counter()
     # create optical flow instance
     flower = cv2.cuda_FarnebackOpticalFlow.create(numLevels=l, pyrScale=0.5, fastPyramids=False, winSize=w, numIters=OF_ITERS, polyN=OF_POLY_N, polySigma=OF_POLY_SIGMA, flags=cv2.OPTFLOW_USE_INITIAL_FLOW)
     #flower = cv2.cuda_FarnebackOpticalFlow.create(numLevels=l, pyrScale=0.5, fastPyramids=False, winSize=w, numIters=OF_ITERS, polyN=OF_POLY_N, polySigma=OF_POLY_SIGMA, flags=0)
@@ -80,18 +82,18 @@ def get_flow_GPU(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIZE, prev_flow=Non
     # calculate optical flow
     #gpu_flow = cv2.cuda.FarnebackOpticalFlow.calc(flower, I0=gpu_target, I1=gpu_reference, flow=None)
     GPU_flow = cv2.cuda.FarnebackOpticalFlow.calc(flower, I0=GPU_target, I1=GPU_reference, flow=GPU_prev_flow)
+    if __debug__:
+        time_1 = time.perf_counter()
+        _OFE_time = time_1 - time_0
+        OFE_time.value += _OFE_time
 
     if __debug__:
         time_2 = time.perf_counter()
     flow = GPU_flow.download()
     if __debug__:
+        logging.debug(f"OF computed in {1000*(_OFE_time):4.3f} ms, max_X={np.max(flow[0]):+3.2f}, min_X={np.min(flow[0]):+3.2f}, max_Y={np.max(flow[1]):+3.2f}, min_Y={np.min(flow[1]):+3.2f}")
         transference_time.value += (time.perf_counter() - time_2)
     
-    if __debug__:
-        time_1 = time.perf_counter()
-        diff = time_1 - time_0
-        logging.debug(f"OF computed in {1000*(diff):4.3f} ms, max_X={np.max(flow[0]):+3.2f}, min_X={np.min(flow[0]):+3.2f}, max_Y={np.max(flow[1]):+3.2f}, min_Y={np.min(flow[1]):+3.2f}")
-        OFE_time.value += diff
     return flow
 
 def get_flow_CPU(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIZE, prev_flow=None):
@@ -706,8 +708,8 @@ if __name__ == "__main__":
     if __debug__:
         time_1 = time.perf_counter()        
         logging.info(f"written \"{args.output}\" in {time_1 - time_0} seconds")
-        logging.info(f"OFE_time = {OFE_time.value} seconds")
-        logging.info(f"warping_time = {warping_time.value} seconds")
-        logging.info(f"convolution_time = {convolution_time.value} seconds")
+        logging.info(f"OFE_time = {OFE_time.value/number_of_processes} seconds")
+        logging.info(f"warping_time = {warping_time.value/number_of_processes} seconds")
+        logging.info(f"convolution_time = {convolution_time.value/number_of_processes} seconds")
         logging.info(f"transference_time = {transference_time.value} seconds")
         
