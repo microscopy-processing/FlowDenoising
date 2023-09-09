@@ -27,14 +27,21 @@ import sys
 import hashlib
 import concurrent
 import multiprocessing
-from multiprocessing import Value #, shared_memory
-from concurrent.futures import ThreadPoolExecutor as PoolExecutor
-#from concurrent.futures.process import ProcessPoolExecutor as PoolExecutor
+from multiprocessing import Value, shared_memory, Lock
+#from concurrent.futures import ThreadPoolExecutor as PoolExecutor
+from concurrent.futures.process import ProcessPoolExecutor as PoolExecutor
+
+def init_pool_processes(the_lock):
+    '''Initialize each process with a global variable lock.
+    '''
+    global lock
+    lock = the_lock
 
 LOGGING_FORMAT = "[%(asctime)s] (%(levelname)s) %(message)s"
 
 if __debug__:
     # In shared memory
+    progress = Value('f', 0)
     OFE_time = Value('f', 0)
     warping_time = Value('f', 0)
     convolution_time = Value('f', 0)
@@ -204,20 +211,11 @@ def get_flow_without_prev_flow_GPU(reference, target, l=OF_LEVELS, w=OF_WINDOW_S
 
 class GaussianDenoising():
 
-    def __init__(self, number_of_processes, vol):
-        if __debug__:
-            self.progress = 0.0
+    def __init__(self, number_of_processes, kernels):
+        #if __debug__:
+        #    self.progress = Value('f', 0)
         self.number_of_processes = number_of_processes
-        self.vol = vol
-        vol_size = vol.dtype.itemsize * vol.size
-        logging.info(f"shape of the input volume (Z, Y, X) = {vol.shape}")
-        logging.info(f"type of the volume = {vol.dtype}")
-        logging.info(f"vol requires {vol_size/(1024*1024):.1f} MB")
-        logging.info(f"{args.input} max = {vol.max()}")
-        logging.info(f"{args.input} min = {vol.min()}")
-        vol_mean = vol.mean()
-        logging.info(f"Input vol average = {vol_mean}")
-        self.filtered_vol = np.zeros_like(vol)
+        self.kernels = kernels
 
     def filter_along_Z_slice(self, z, kernel):
         ks2 = kernel.size//2
@@ -226,7 +224,9 @@ class GaussianDenoising():
             tmp_slice += self.vol[(z + i - ks2) % self.vol.shape[0], :, :]*kernel[i]
         self.filtered_vol[z, :, :] = tmp_slice
         if __debug__:
-            self.progress += 1
+            #self.progress.value += 1
+            progress.value += 1
+        print("3", np.max(self.filtered_vol), self.filtered_vol.data)
 
     def filter_along_Y_slice(self, y, kernel):
         ks2 = kernel.size//2
@@ -235,7 +235,8 @@ class GaussianDenoising():
             tmp_slice += self.vol[:, (y + i - ks2) % self.vol.shape[1], :]*kernel[i]
         self.filtered_vol[:, y, :] = tmp_slice
         if __debug__:
-            self.progress += 1
+            #self.progress.value += 1
+            progress.value += 1
 
     def filter_along_X_slice(self, x, kernel):
         ks2 = kernel.size//2
@@ -244,12 +245,14 @@ class GaussianDenoising():
             tmp_slice += self.vol[:, :, (x + i - ks2) % self.vol.shape[2]]*kernel[i]
         self.filtered_vol[:, :, x] = tmp_slice
         if __debug__:
-            self.progress += 1
+            #self.progress.value += 1
+            progress.value += 1
 
     def filter_along_Z_chunk(self, chunk_index, chunk_size, chunk_offset, kernel):
         for z in range(chunk_size):
             self.filter_along_Z_slice(chunk_index*chunk_size + z + chunk_offset, kernel)
-        return chunk_index
+        #return chunk_index # Probar a quitar este return
+        print("5", np.max(self.filtered_vol), self.filtered_vol.data)
 
     def filter_along_Y_chunk(self, chunk_index, chunk_size, chunk_offset, kernel):
         for y in range(chunk_size):
@@ -261,9 +264,9 @@ class GaussianDenoising():
             self.filter_along_X_slice(chunk_index*chunk_size + x + chunk_offset, kernel)
         return chunk_index
 
-    def filter_along_Z(self, kernel):
-        logging.info(f"Filtering along Z with kernel length={kernel.size}")
-
+    def filter_along_Z(self):
+        kernel = self.kernels[0]
+        logging.info(f"Filtering along Z with kernel={kernel}")
         if __debug__:
             time_0 = time.perf_counter()
             min_OF = 1000
@@ -276,14 +279,19 @@ class GaussianDenoising():
         chunk_offsets = [0]*self.number_of_processes
         kernels = [kernel]*self.number_of_processes
         with PoolExecutor(max_workers=self.number_of_processes) as executor:
+            print("4", np.max(self.filtered_vol), self.filtered_vol.data)
             for _ in executor.map(self.filter_along_Z_chunk,
                                   chunk_indexes,
                                   chunk_sizes,
                                   chunk_offsets,
                                   kernels):
-                logging.debug(f"PU #{_} finished")
+                logging.info(f"PU #{_} finished")
+                print("4", np.max(self.filtered_vol), self.filtered_vol.data)
+            while np.mean(self.filtered_vol) == 100:
+                time.sleep(1)
         N_remaining_slices = Z_dim % self.number_of_processes
         if N_remaining_slices > 0:
+            logging.info(f"remaining_slices={N_remaining_slices}")
             chunk_indexes = [i for i in range(N_remaining_slices)]
             chunk_sizes = [1]*N_remaining_slices
             chunk_offsets = [chunk_size*self.number_of_processes]*N_remaining_slices
@@ -304,9 +312,9 @@ class GaussianDenoising():
             logging.debug(f"Max OF val: {max_OF}")
             convolution_time.value += diff
 
-    def filter_along_Y(self, kernel):
+    def filter_along_Y(self):
+        kernel = self.kernels[1]
         logging.info(f"Filtering along Y with kernel length={kernel.size}")
-
         if __debug__:
             time_0 = time.perf_counter()
             min_OF = 1000
@@ -327,6 +335,7 @@ class GaussianDenoising():
                 logging.debug(f"PU #{_} finished")
         N_remaining_slices = Y_dim % self.number_of_processes
         if N_remaining_slices > 0:
+            logging.info(f"remaining_slices={N_remaining_slices}")
             chunk_indexes = [i for i in range(N_remaining_slices)]
             chunk_sizes = [1]*N_remaining_slices
             chunk_offsets = [chunk_size*self.number_of_processes]*N_remaining_slices
@@ -347,7 +356,8 @@ class GaussianDenoising():
             logging.debug(f"Max OF val: {max_OF}")
             convolution_time.value += diff
 
-    def filter_along_X(self, kernel):
+    def filter_along_X(self):
+        kernel = self.kernels[2]
         logging.info(f"Filtering along X with kernel length={kernel.size}")
         if __debug__:
             time_0 = time.perf_counter()
@@ -369,6 +379,7 @@ class GaussianDenoising():
                 logging.debug(f"PU #{_} finished")
         N_remaining_slices = X_dim % self.number_of_processes
         if N_remaining_slices > 0:
+            logging.info(f"remaining_slices={N_remaining_slices}")
             chunk_indexes = [i for i in range(N_remaining_slices)]
             chunk_sizes = [1]*N_remaining_slices
             chunk_offsets = [chunk_size*self.number_of_processes]*N_remaining_slices
@@ -389,22 +400,62 @@ class GaussianDenoising():
             logging.debug(f"Max OF val: {max_OF}")
             convolution_time.value += diff
         
-    def filter(self, kernels):
-        self.filter_along_Z(kernels[0])
+    def filter(self, vol):
+        vol_size = vol.dtype.itemsize*vol.size
+        #self.vol = vol # This only can done if we were using threads
+        self.SM_vol = shared_memory.SharedMemory(
+            create=True,
+            size=vol_size,
+            name="vol") # See /dev/shm/vol
+        self.vol = np.ndarray(
+            shape=vol.shape,
+            dtype=vol.dtype,
+            buffer=self.SM_vol.buf)
+        self.vol = vol.copy()
+        if __debug__:
+            logging.info(f"shape of the input volume (Z, Y, X) = {self.vol.shape}")
+            logging.info(f"type of the volume = {self.vol.dtype}")
+            logging.info(f"vol requires {vol_size/(1024*1024):.1f} MB")
+            logging.info(f"{args.input} max = {self.vol.max()}")
+            logging.info(f"{args.input} min = {self.vol.min()}")
+            vol_mean = vol.mean()
+            logging.info(f"Input vol average = {vol_mean}")
+        #self.filtered_vol = np.zeros_like(vol) # This only can done if we were using threads
+        self.SM_filtered_vol = shared_memory.SharedMemory(
+            create=True,
+            size=vol_size,
+            name="filtered_vol") # See /dev/shm/filtered_vol
+        self.filtered_vol = np.ndarray(
+            shape=vol.shape,
+            dtype=vol.dtype,
+            buffer=self.SM_filtered_vol.buf)
+        self.filtered_vol.fill(100)
+        print("1", np.max(self.filtered_vol), self.filtered_vol.data)
+        self.filter_along_Z()
+        print("2", np.max(self.filtered_vol), self.filtered_vol.data)
         self.vol[...] = self.filtered_vol[...]
-        self.filter_along_Y(kernels[1])
+        self.filter_along_Y()
         self.vol[...] = self.filtered_vol[...]
-        self.filter_along_X(kernels[2])
+        self.filter_along_X()
+        return self.filtered_vol
+        #return self.vol
+
+    def close(self):
+        self.SM_vol.close()
+        self.SM_vol.unlink()
+        self.SM_filtered_vol.close()
+        self.SM_filtered_vol.unlink()
 
     def feedback(self):
         while True:
-            logging.info(f"{100*self.progress/np.sum(vol.shape):3.2f} % filtering completed")
+            #logging.info(f"{100*self.progress.value/np.sum(vol.shape):3.2f} % filtering completed")
+            logging.info(f"{100*progress.value/np.sum(vol.shape):3.2f} % filtering completed")
             time.sleep(1)
 
 class FlowDenoising(GaussianDenoising):
 
-    def __init__(self, number_of_processes, vol, l, w, get_flow, warp_slice):
-        super().__init__(number_of_processes, vol)
+    def __init__(self, number_of_processes, kernels, l, w, get_flow, warp_slice):
+        super().__init__(number_of_processes, kernels)
         self.l = l
         self.w = w
         self.get_flow = get_flow
@@ -431,7 +482,8 @@ class FlowDenoising(GaussianDenoising):
             tmp_slice += OF_compensated_slice*kernel[i]
         self.filtered_vol[z, :, :] = tmp_slice
         if __debug__:
-            self.progress += 1
+            #self.progress.value += 1
+            progress.value += 1
 
     def filter_along_Y_slice(self, y, kernel):
         ks2 = kernel.size//2
@@ -454,7 +506,8 @@ class FlowDenoising(GaussianDenoising):
             tmp_slice += OF_compensated_slice*kernel[i]
         self.filtered_vol[:, y, :] = tmp_slice
         if __debug__:
-            self.progress += 1
+            #self.progress.value += 1
+            progress.value += 1
 
     def filter_along_X_slice(self, x, kernel):
         ks2 = kernel.size//2
@@ -477,7 +530,8 @@ class FlowDenoising(GaussianDenoising):
             tmp_slice += OF_compensated_slice * kernel[i]
         self.filtered_vol[:, :, x] = tmp_slice
         if __debug__:
-            self.progress += 1
+            #self.progress.value += 1
+            progress.value += 1
 
 def int_or_str(text):
     '''Helper function for argument parsing.'''
@@ -626,27 +680,28 @@ if __name__ == "__main__":
         time_0 = time.perf_counter()
 
     if args.no_OF:
-        fd = GaussianDenoising(number_of_processes, vol)
+        fd = GaussianDenoising(number_of_processes, kernels)
     else:
-        fd = FlowDenoising(number_of_processes, vol, l, w, get_flow, warp_slice)
+        fd = FlowDenoising(number_of_processes, kernels, l, w, get_flow, warp_slice)
 
     if __debug__:
         thread = threading.Thread(target=fd.feedback)
         thread.daemon = True # To obey CTRL+C interruption.
         thread.start()
-    
-    filtered_vol = fd.filter(kernels)
+
+    filtered_vol = fd.filter(vol)
 
     logging.info(f"{args.input} type = {vol.dtype}")
     logging.info(f"{args.input} max = {vol.max()}")
     logging.info(f"{args.input} min = {vol.min()}")
     logging.info(f"{args.input} average = {vol.mean()}")
-    
-    filtered_vol = vol.copy()
-
     if __debug__:
         time_1 = time.perf_counter()        
         logging.info(f"Volume filtered in {time_1 - time_0} seconds")
+
+    print(type(filtered_vol), filtered_vol.shape, filtered_vol.dtype)
+    #quit()
+    print(np.max(filtered_vol))
 
     #filtered_vol = np.transpose(filtered_vol, transpose_pattern)
     if __debug__:
@@ -660,6 +715,7 @@ if __name__ == "__main__":
         time_0 = time.perf_counter()
         logging.debug(f"output = {args.output}")
 
+    #MRC_output = "mrc" in args.output.split('.')[-1].lower()
     MRC_output = ( args.output.split('.')[-1] == "MRC" or args.output.split('.')[-1] == "mrc" )
 
     if MRC_output:
@@ -678,3 +734,5 @@ if __name__ == "__main__":
         logging.info(f"warping_time = {warping_time.value/number_of_processes} seconds")
         logging.info(f"convolution_time = {convolution_time.value/number_of_processes} seconds")
         logging.info(f"transference_time = {transference_time.value} seconds")
+
+    fd.close()

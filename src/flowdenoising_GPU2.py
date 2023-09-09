@@ -346,6 +346,7 @@ def no_OF_filter_along_Z_slice(z, kernel):
         tmp_slice += vol[(z + i - ks2) % vol.shape[0], :, :]*kernel[i]
     filtered_vol[z, :, :] = tmp_slice
     percent.value += 1
+    print(id(filtered_vol))
 
 def no_OF_filter_along_Y_slice(y, kernel):
     ks2 = kernel.size//2
@@ -354,6 +355,7 @@ def no_OF_filter_along_Y_slice(y, kernel):
         tmp_slice += vol[:, (y + i - ks2) % vol.shape[1], :]*kernel[i]
     filtered_vol[:, y, :] = tmp_slice
     percent.value += 1
+    print(id(filtered_vol))
 
 def no_OF_filter_along_X_slice(x, kernel):
     ks2 = kernel.size//2
@@ -362,6 +364,7 @@ def no_OF_filter_along_X_slice(x, kernel):
         tmp_slice += vol[:, :, (x + i - ks2) % vol.shape[2]]*kernel[i]
     filtered_vol[:, :, x] = tmp_slice
     percent.value += 1
+    print(id(filtered_vol))
 
 def no_OF_filter_along_Z_chunk(chunk_index, chunk_size, chunk_offset, kernel):
     for z in range(chunk_size):
@@ -501,6 +504,7 @@ def no_OF_filter(kernels):
     no_OF_filter_along_Y(kernels[1])
     vol[...] = filtered_vol[...]
     no_OF_filter_along_X(kernels[2])
+    print(id(filtered_vol))
 
 def int_or_str(text):
     '''Helper function for argument parsing.'''
