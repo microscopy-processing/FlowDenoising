@@ -34,11 +34,13 @@ from multiprocessing.shared_memory import SharedMemory
 #from concurrent.futures import ThreadPoolExecutor as PoolExecutor
 from concurrent.futures.process import ProcessPoolExecutor as PoolExecutor
 
-def init_pool_processes(the_lock):
-    '''Initialize each process with a global variable lock.
-    '''
-    global lock
-    lock = the_lock
+done = False
+
+#def init_pool_processes(the_lock):
+#    '''Initialize each process with a global variable lock.
+#    '''
+#    global lock
+#    lock = the_lock
 
 LOGGING_FORMAT = "[%(asctime)s] (%(levelname)s) %(message)s"
 
@@ -503,7 +505,8 @@ class GaussianDenoising():
         self.SM_filtered_vol.unlink()
 
     def feedback(self):
-        while True:
+        global done
+        while not done:
             #logging.info(f"{100*self.progress.value/np.sum(vol.shape):3.2f} % filtering completed")
             logging.info(f"{100*progress.value/np.sum(vol.shape):3.2f} % filtering completed")
             time.sleep(1)
@@ -795,4 +798,5 @@ if __name__ == "__main__":
         logging.info(f"transference_time = {transference_time.value} seconds")
 
     fd.close()
+    done = True
     print("done")
