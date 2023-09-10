@@ -795,3 +795,4 @@ if __name__ == "__main__":
         logging.info(f"transference_time = {transference_time.value} seconds")
 
     fd.close()
+    print("done")
