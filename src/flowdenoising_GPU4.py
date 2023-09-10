@@ -412,14 +412,7 @@ class GaussianDenoising():
             dtype=vol.dtype,
             buffer=self.SM_vol.buf)
         self.vol = vol.copy()
-        if __debug__:
-            logging.info(f"shape of the input volume (Z, Y, X) = {self.vol.shape}")
-            logging.info(f"type of the volume = {self.vol.dtype}")
-            logging.info(f"vol requires {vol_size/(1024*1024):.1f} MB")
-            logging.info(f"{args.input} max = {self.vol.max()}")
-            logging.info(f"{args.input} min = {self.vol.min()}")
-            vol_mean = vol.mean()
-            logging.info(f"Input vol average = {vol_mean}")
+
         #self.filtered_vol = np.zeros_like(vol) # This only can done if we were using threads
         self.SM_filtered_vol = shared_memory.SharedMemory(
             create=True,
@@ -647,14 +640,13 @@ if __name__ == "__main__":
         vol = skimage.io.imread(args.input, plugin="tifffile").astype(np.float32)
     vol_size = vol.dtype.itemsize * vol.size
 
-    if __debug__:
-        logging.info(f"shape of the input volume (Z, Y, X) = {vol.shape}")
-        logging.info(f"type of the volume = {vol.dtype}")
-        logging.info(f"vol requires {vol_size/(1024*1024):.1f} MB")
-        logging.info(f"{args.input} max = {vol.max()}")
-        logging.info(f"{args.input} min = {vol.min()}")
-        vol_mean = vol.mean()
-        logging.info(f"Input vol average = {vol_mean}")
+    logging.info(f"shape of the input volume (Z, Y, X) = {vol.shape}")
+    logging.info(f"type of the volume = {vol.dtype}")
+    logging.info(f"vol requires {vol_size/(1024*1024):.1f} MB")
+    logging.info(f"{args.input} max = {vol.max()}")
+    logging.info(f"{args.input} min = {vol.min()}")
+    vol_mean = vol.mean()
+    logging.info(f"Input vol average = {vol_mean}")
 
     if __debug__:
         time_1 = time.perf_counter()

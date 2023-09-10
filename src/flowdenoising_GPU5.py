@@ -29,7 +29,8 @@ import concurrent
 import multiprocessing
 from multiprocessing import Value#, Lock
 from multiprocessing.shared_memory import SharedMemory
-from multiprocessing import Process
+#from multiprocessing import Process as Task
+#from threading import Thread as Task
 #from concurrent.futures import ThreadPoolExecutor as PoolExecutor
 from concurrent.futures.process import ProcessPoolExecutor as PoolExecutor
 
@@ -59,7 +60,7 @@ def get_gaussian_kernel(sigma=1):
         coeffs = scipy.ndimage.gaussian_filter1d(delta, sigma=sigma)
         number_of_zeros = coeffs.size - np.count_nonzero(coeffs)
         number_of_coeffs += 1
-    logging.debug("Kernel computed")
+    logging.info(f"Kernel computed: {coeffs[1:-1]}")
     return coeffs[1:-1]
 
 OFCA_EXTENSION_MODE = cv2.BORDER_REPLICATE
@@ -268,7 +269,7 @@ class GaussianDenoising():
 
     def filter_along_Z(self):
         kernel = self.kernels[0]
-        logging.info(f"Filtering along Z with kernel={kernel}")
+        logging.info(f"Filtering along Z")
         if __debug__:
             time_0 = time.perf_counter()
             min_OF = 1000
@@ -290,7 +291,7 @@ class GaussianDenoising():
         #        #print("4", np.max(self.filtered_vol), self.filtered_vol.data)
         processes = []
         for i in range(self.number_of_processes):
-            process = Process(
+            process = Task(
                 target=self.filter_along_Z_chunk,
                 args=(i, chunk_size, 0, kernel))
             process.start()
@@ -312,8 +313,9 @@ class GaussianDenoising():
             #                          chunk_offsets,
             #                          kernels):
             #        logging.debug(f"PU #{_} finished")
+            processes = []
             for i in range(N_remaining_slices):
-                process = Process(
+                process = Task(
                     target=self.filter_along_Z_chunk,
                     args=(i, 1, chunk_size*self.number_of_processes, kernel))
                 process.start()
@@ -331,7 +333,7 @@ class GaussianDenoising():
 
     def filter_along_Y(self):
         kernel = self.kernels[1]
-        logging.info(f"Filtering along Y with kernel length={kernel.size}")
+        logging.info(f"Filtering along Y")
         if __debug__:
             time_0 = time.perf_counter()
             min_OF = 1000
@@ -352,7 +354,7 @@ class GaussianDenoising():
         #        logging.debug(f"PU #{_} finished")
         processes = []
         for i in range(self.number_of_processes):
-            process = Process(
+            process = Task(
                 target=self.filter_along_Y_chunk,
                 args=(i, chunk_size, 0, kernel))
             process.start()
@@ -374,8 +376,9 @@ class GaussianDenoising():
             #                          chunk_offsets,
             #                          kernels):
             #        logging.debug(f"PU #{_} finished")
+            processes = []
             for i in range(N_remaining_slices):
-                process = Process(
+                process = Task(
                     target=self.filter_along_Y_chunk,
                     args=(i, 1, chunk_size*self.number_of_processes, kernel))
                 process.start()
@@ -393,7 +396,7 @@ class GaussianDenoising():
 
     def filter_along_X(self):
         kernel = self.kernels[2]
-        logging.info(f"Filtering along X with kernel length={kernel.size}")
+        logging.info(f"Filtering along X")
         if __debug__:
             time_0 = time.perf_counter()
             min_OF = 1000
@@ -401,31 +404,49 @@ class GaussianDenoising():
         
         X_dim = vol.shape[2]
         chunk_size = X_dim//self.number_of_processes
-        chunk_indexes = [i for i in range(self.number_of_processes)]
-        chunk_sizes = [chunk_size]*self.number_of_processes
-        chunk_offsets = [0]*self.number_of_processes
-        kernels = [kernel]*self.number_of_processes
-        with PoolExecutor(max_workers=self.number_of_processes) as executor:
-            for _ in executor.map(self.filter_along_X_chunk,
-                                  chunk_indexes,
-                                  chunk_sizes,
-                                  chunk_offsets,
-                                  kernels):
-                logging.debug(f"PU #{_} finished")
+        #chunk_indexes = [i for i in range(self.number_of_processes)]
+        #chunk_sizes = [chunk_size]*self.number_of_processes
+        #chunk_offsets = [0]*self.number_of_processes
+        #kernels = [kernel]*self.number_of_processes
+        #with PoolExecutor(max_workers=self.number_of_processes) as executor:
+        #    for _ in executor.map(self.filter_along_X_chunk,
+        #                          chunk_indexes,
+        #                          chunk_sizes,
+        #                          chunk_offsets,
+        #                          kernels):
+        #        logging.debug(f"PU #{_} finished")
+        processes = []
+        for i in range(self.number_of_processes):
+            process = Task(
+                target=self.filter_along_X_chunk,
+                args=(i, chunk_size, 0, kernel))
+            process.start()
+            processes.append(process)
+        for i in processes:
+            i.join()        
         N_remaining_slices = X_dim % self.number_of_processes
         if N_remaining_slices > 0:
             logging.info(f"remaining_slices={N_remaining_slices}")
-            chunk_indexes = [i for i in range(N_remaining_slices)]
-            chunk_sizes = [1]*N_remaining_slices
-            chunk_offsets = [chunk_size*self.number_of_processes]*N_remaining_slices
-            kernels = [kernel]*N_remaining_slices
-            with PoolExecutor(max_workers=N_remaining_slices) as executor:
-                for _ in executor.map(self.filter_along_X_chunk,
-                                      chunk_indexes,
-                                      chunk_sizes,
-                                      chunk_offsets,
-                                      kernels):
-                    logging.debug(f"PU #{_} finished")
+            #chunk_indexes = [i for i in range(N_remaining_slices)]
+            #chunk_sizes = [1]*N_remaining_slices
+            #chunk_offsets = [chunk_size*self.number_of_processes]*N_remaining_slices
+            #kernels = [kernel]*N_remaining_slices
+            #with PoolExecutor(max_workers=N_remaining_slices) as executor:
+            #    for _ in executor.map(self.filter_along_X_chunk,
+            #                          chunk_indexes,
+            #                          chunk_sizes,
+            #                          chunk_offsets,
+            #                          kernels):
+            #        logging.debug(f"PU #{_} finished")
+            processes = []
+            for i in range(N_remaining_slices):
+                process = Task(
+                    target=self.filter_along_X_chunk,
+                    args=(i, 1, chunk_size*self.number_of_processes, kernel))
+                process.start()
+                processes.append(process)
+            for i in processes:
+                i.join()
 
         if __debug__:
             time_1 = time.perf_counter()
@@ -447,14 +468,14 @@ class GaussianDenoising():
             dtype=vol.dtype,
             buffer=self.SM_vol.buf)
         self.vol = vol.copy()
-        if __debug__:
-            logging.info(f"shape of the input volume (Z, Y, X) = {self.vol.shape}")
-            logging.info(f"type of the volume = {self.vol.dtype}")
-            logging.info(f"vol requires {vol_size/(1024*1024):.1f} MB")
-            logging.info(f"{args.input} max = {self.vol.max()}")
-            logging.info(f"{args.input} min = {self.vol.min()}")
-            vol_mean = vol.mean()
-            logging.info(f"Input vol average = {vol_mean}")
+        #if __debug__:
+        #    logging.info(f"shape of the input volume (Z, Y, X) = {self.vol.shape}")
+        #    logging.info(f"type of the volume = {self.vol.dtype}")
+        #    logging.info(f"vol requires {vol_size/(1024*1024):.1f} MB")
+        #    logging.info(f"{args.input} max = {self.vol.max()}")
+        #    logging.info(f"{args.input} min = {self.vol.min()}")
+        #    vol_mean = vol.mean()
+        #    logging.info(f"Input vol average = {vol_mean}")
         #self.filtered_vol = np.zeros_like(vol) # This only can done if we were using threads
         self.SM_filtered_vol = SharedMemory(
             create=True,
@@ -608,7 +629,8 @@ parser.add_argument("-p", "--number_of_processes", type=int_or_str,
                     default=number_of_PUs)
 parser.add_argument("--recompute_flow", action="store_true", help="Disable the use of adjacent optical flow fields")
 parser.add_argument("--show_fingerprint", action="store_true", help="Show a hash of this file (you must run it in the folder that contains flowdenoising.py)")
-parser.add_argument("--GPU", action="store_true", help="Compute the optical flow in the GPU (if available through CUDA)")
+parser.add_argument("--use_GPU", action="store_true", help="Compute the optical flow in the GPU (if available through CUDA)")
+parser.add_argument("--use_threads", action="store_true", help="Use threads instead of processes")
 
 def show_memory_usage(msg=''):
     logging.info(f"{psutil.Process(os.getpid()).memory_info().rss/(1024*1024):.1f} MB used in process {os.getpid()} {msg}")
@@ -635,8 +657,15 @@ if __name__ == "__main__":
     else:
         logging.basicConfig(format=LOGGING_FORMAT, level=logging.CRITICAL)
 
+    if args.use_threads:
+        from threading import Thread as Task
+        logging.info("Using threads")
+    else:
+        from multiprocessing import Process as Task
+        logging.info("Using processes")
+
     if args.recompute_flow:
-        if args.GPU:
+        if args.use_GPU:
             get_flow = get_flow_without_prev_flow_GPU
             logging.info("Computing the optical flow in the GPU")
         else:
@@ -644,7 +673,7 @@ if __name__ == "__main__":
             logging.info("Computing the optical flow in the CPU")
         logging.info("No reusing adjacent OF fields as predictions")
     else:
-        if args.GPU:
+        if args.use_GPU:
             get_flow = get_flow_with_prev_flow_GPU
             logging.info("Computing the optical flow in the GPU")
         else:
@@ -652,8 +681,6 @@ if __name__ == "__main__":
             logging.info("Computing the optical flow in the CPU")
         logging.info("Using adjacent OF fields as predictions")
 
-    logging.info(f"Number of processing units: {number_of_PUs}")
-        
     sigma = [float(i) for i in args.sigma]
     logging.info(f"sigma={tuple(sigma)}")
     l = args.levels
@@ -682,12 +709,12 @@ if __name__ == "__main__":
         vol = skimage.io.imread(args.input, plugin="tifffile").astype(np.float32)
     vol_size = vol.dtype.itemsize * vol.size
 
+    logging.info(f"shape of the input volume (Z, Y, X) = {vol.shape}")
+    logging.info(f"type of the volume = {vol.dtype}")
+    logging.info(f"vol requires {vol_size/(1024*1024):.1f} MB")
+    logging.info(f"{args.input} max = {vol.max()}")
+    logging.info(f"{args.input} min = {vol.min()}")
     if __debug__:
-        logging.info(f"shape of the input volume (Z, Y, X) = {vol.shape}")
-        logging.info(f"type of the volume = {vol.dtype}")
-        logging.info(f"vol requires {vol_size/(1024*1024):.1f} MB")
-        logging.info(f"{args.input} max = {vol.max()}")
-        logging.info(f"{args.input} min = {vol.min()}")
         vol_mean = vol.mean()
         logging.info(f"Input vol average = {vol_mean}")
 
@@ -704,14 +731,12 @@ if __name__ == "__main__":
     #vol = np.transpose(vol, transpose_pattern)
     #logging.info(f"After transposing, shape of the volume to denoise (Z, Y, X) = {vol.shape}")
 
-    if __debug__:
-        logging.info(f"Number of available processing units: {number_of_PUs}")
     number_of_processes = args.number_of_processes
-    if __debug__:
-        logging.info(f"Number of concurrent processes: {number_of_processes}")
+    logging.info(f"Number of available processing units: {number_of_PUs}")
+    logging.info(f"Number of concurrent processes: {number_of_processes}")
 
+    logging.info(f"Filtering ...")
     if __debug__:
-        logging.info(f"Filtering ...")
         time_0 = time.perf_counter()
 
     if args.no_OF:
@@ -726,10 +751,10 @@ if __name__ == "__main__":
 
     filtered_vol = fd.filter(vol)
 
-    logging.info(f"{args.input} type = {vol.dtype}")
-    logging.info(f"{args.input} max = {vol.max()}")
-    logging.info(f"{args.input} min = {vol.min()}")
-    logging.info(f"{args.input} average = {vol.mean()}")
+    #logging.info(f"{args.input} type = {vol.dtype}")
+    #logging.info(f"{args.input} max = {vol.max()}")
+    #logging.info(f"{args.input} min = {vol.min()}")
+    #logging.info(f"{args.input} average = {vol.mean()}")
     if __debug__:
         time_1 = time.perf_counter()        
         logging.info(f"Volume filtered in {time_1 - time_0} seconds")
@@ -739,11 +764,10 @@ if __name__ == "__main__":
     #print(np.max(filtered_vol))
 
     #filtered_vol = np.transpose(filtered_vol, transpose_pattern)
-    if __debug__:
-        logging.info(f"{args.output} type = {filtered_vol.dtype}")
-        logging.info(f"{args.output} max = {filtered_vol.max()}")
-        logging.info(f"{args.output} min = {filtered_vol.min()}")
-        logging.info(f"{args.output} average = {filtered_vol.mean()}")
+    logging.info(f"{args.output} type = {filtered_vol.dtype}")
+    logging.info(f"{args.output} max = {filtered_vol.max()}")
+    logging.info(f"{args.output} min = {filtered_vol.min()}")
+    logging.info(f"{args.output} average = {filtered_vol.mean()}")
     
     if __debug__:
         logging.info(f"writing \"{args.output}\"")
