@@ -179,15 +179,15 @@ def get_flow_with_prev_flow_GPU(GPU_reference, GPU_target, l=OF_LEVELS, w=OF_WIN
     
     return flow
 
-def get_flow_without_prev_flow_GPU(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIZE, prev_flow=None):
+def get_flow_without_prev_flow_GPU(GPU_reference, GPU_target, l=OF_LEVELS, w=OF_WINDOW_SIZE, GPU_prev_flow=None):
     if __debug__:
         time_0 = time.perf_counter()
-    GPU_target = cv2.cuda_GpuMat()
-    GPU_target.upload(target)
-    GPU_reference = cv2.cuda_GpuMat()
-    GPU_reference.upload(reference)
-    GPU_prev_flow = cv2.cuda_GpuMat()
-    GPU_prev_flow.upload(prev_flow)
+    #GPU_target = cv2.cuda_GpuMat()
+    #GPU_target.upload(target)
+    #GPU_reference = cv2.cuda_GpuMat()
+    #GPU_reference.upload(reference)
+    #GPU_prev_flow = cv2.cuda_GpuMat()
+    #GPU_prev_flow.upload(prev_flow)
     if __debug__:
         transference_time.value += (time.perf_counter() - time_0)
 
@@ -200,6 +200,7 @@ def get_flow_without_prev_flow_GPU(reference, target, l=OF_LEVELS, w=OF_WINDOW_S
     # calculate optical flow
     #gpu_flow = cv2.cuda.FarnebackOpticalFlow.calc(flower, I0=gpu_target, I1=gpu_reference, flow=None)
     GPU_flow = cv2.cuda.FarnebackOpticalFlow.calc(flower, I0=GPU_target, I1=GPU_reference, flow=None)
+    print("hola")
     if __debug__:
         time_1 = time.perf_counter()
         _OFE_time = time_1 - time_0
@@ -491,10 +492,10 @@ class GaussianDenoising():
         #print("1", np.max(self.filtered_vol), self.filtered_vol.data)
         self.filter_along_Z()
         #print("2", np.max(self.filtered_vol), self.filtered_vol.data)
-        self.vol[...] = self.filtered_vol[...]
-        self.filter_along_Y()
-        self.vol[...] = self.filtered_vol[...]
-        self.filter_along_X()
+        #self.vol[...] = self.filtered_vol[...]
+        #self.filter_along_Y()
+        #self.vol[...] = self.filtered_vol[...]
+        #self.filter_along_X()
         return self.filtered_vol
         #return self.vol
 
@@ -520,22 +521,45 @@ class FlowDenoising(GaussianDenoising):
         self.get_flow = get_flow
         self.warp_slice = warp_slice
 
+    def filter(self, vol):
+        #reshaped_vol = vol.reshape(-1, vol.shape[0])
+        #self.GPU_vol = cv2.cuda_GpuMat()
+        #self.GPU_vol.create(reshaped_vol.shape[0], reshaped_vol.shape[1], cv2.CV_32F)
+        #self.GPU_vol.upload(reshaped_vol)
+
+        self.GPU_vol = []
+        for z in range(vol.shape[0]):
+            self.GPU_vol.append(cv2.cuda_GpuMat())
+            print(".", end='')
+        for z in range(vol.shape[0]): # Se puede quitar, creo
+            print("o", end='')
+            self.GPU_vol[z].create(vol.shape[1], vol.shape[2], cv2.CV_32F)
+        for z in range(vol.shape[0]):
+            print("O", end='')
+            self.GPU_vol[z].upload(vol[z])
+        
+        #input()
+        self.filtered_vol = super().filter(vol)
+        return self.filtered_vol
+
     def filter_along_Z_slice(self, z, kernel):
+        print("z=", z)
         ks2 = kernel.size//2
         tmp_slice = np.zeros_like(self.vol[z, :, :]).astype(np.float32)
         assert kernel.size % 2 != 0 # kernel.size must be odd
         prev_flow = np.zeros(shape=(self.vol.shape[1], self.vol.shape[2], 2), dtype=np.float32)
         for i in range(ks2 - 1, -1, -1):
-            flow = self.get_flow(self.vol[(z + i - ks2) % self.vol.shape[0], :, :],
-                                 self.vol[z, :, :], l, w, prev_flow)
+            flow = self.get_flow(self.GPU_vol[(z + i - ks2) % self.vol.shape[0]],
+                                 self.GPU_vol[z], l, w, None)
             prev_flow = flow
             OF_compensated_slice = self.warp_slice(self.vol[(z + i - ks2) % self.vol.shape[0], :, :], flow)
             tmp_slice += OF_compensated_slice*kernel[i]
+            print(i)
         tmp_slice += self.vol[z, :, :]*kernel[ks2]
         prev_flow = np.zeros(shape=(self.vol.shape[1], self.vol.shape[2], 2), dtype=np.float32)
         for i in range(ks2 + 1, kernel.size):
-            flow = self.get_flow(self.vol[(z + i - ks2) % self.vol.shape[0], :, :],
-                                 self.vol[z, :, :], l, w, prev_flow)
+            flow = self.get_flow(self.GPU_vol[(z + i - ks2) % self.vol.shape[0]],
+                                 self.GPU_vol[z], l, w, None)
             prev_flow = flow
             OF_compensated_slice = self.warp_slice(self.vol[(z + i - ks2) % self.vol.shape[0], :, :], flow)
             tmp_slice += OF_compensated_slice*kernel[i]
