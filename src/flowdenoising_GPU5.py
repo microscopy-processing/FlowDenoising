@@ -526,6 +526,7 @@ class FlowDenoising(GaussianDenoising):
         assert kernel.size % 2 != 0 # kernel.size must be odd
         prev_flow = np.zeros(shape=(self.vol.shape[1], self.vol.shape[2], 2), dtype=np.float32)
         for i in range(ks2 - 1, -1, -1):
+            print((z + i - ks2) % self.vol.shape[0])
             flow = self.get_flow(self.vol[(z + i - ks2) % self.vol.shape[0], :, :],
                                  self.vol[z, :, :], l, w, prev_flow)
             prev_flow = flow
@@ -534,6 +535,7 @@ class FlowDenoising(GaussianDenoising):
         tmp_slice += self.vol[z, :, :]*kernel[ks2]
         prev_flow = np.zeros(shape=(self.vol.shape[1], self.vol.shape[2], 2), dtype=np.float32)
         for i in range(ks2 + 1, kernel.size):
+            print((z + i - ks2) % self.vol.shape[0])
             flow = self.get_flow(self.vol[(z + i - ks2) % self.vol.shape[0], :, :],
                                  self.vol[z, :, :], l, w, prev_flow)
             prev_flow = flow
