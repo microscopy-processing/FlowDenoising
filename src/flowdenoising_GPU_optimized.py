@@ -144,7 +144,28 @@ max_Y={np.max(flow[1]):+3.2f}, min_Y={np.min(flow[1]):+3.2f}")
         OFE_time.value += diff
     return flow
 
-def get_flow_with_prev_flow_GPU(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIZE, prev_flow=None):
+class GPU_flower:
+
+    def __init__(self, l, w, iters, polyN, polySigma, flags=cv2.OPTFLOW_USE_INITIAL_FLOW):
+        self.flower = cv2.cuda_FarnebackOpticalFlow.create(numLevels=l, pyrScale=0.5, fastPyramids=False, winSize=w, numIters=iters, polyN=polyN, polySigma=polySigma, flags=flags)
+
+    def set_target(self, target):
+        self.GPU_target = cv2.cuda_GpuMat()
+        self.GPU_target.upload(target)
+
+    def get_flow(self, reference, prev_flow=None):
+        GPU_reference = cv2.cuda_GpuMat()
+        GPU_reference.upload(reference)
+        #if prev_flow != None:
+        GPU_prev_flow = cv2.cuda_GpuMat()
+        GPU_prev_flow.upload(prev_flow)
+        #else:
+        #    GPU_prev_flow = None
+        GPU_flow = cv2.cuda.FarnebackOpticalFlow.calc(self.flower, I0=self.GPU_target, I1=GPU_reference, flow=GPU_prev_flow)
+        flow = GPU_flow.download()
+        return flow
+
+def get_flow_with_prev_flow_GPU(GPU_reference, GPU_target, l=OF_LEVELS, w=OF_WINDOW_SIZE, GPU_prev_flow=None):
     if __debug__:
         time_0 = time.perf_counter()
     GPU_target = cv2.cuda_GpuMat()
@@ -513,11 +534,11 @@ class GaussianDenoising():
 
 class FlowDenoising(GaussianDenoising):
 
-    def __init__(self, number_of_processes, kernels, l, w, get_flow, warp_slice):
+    def __init__(self, number_of_processes, kernels, l, w, flower, warp_slice):
         super().__init__(number_of_processes, kernels)
         self.l = l
         self.w = w
-        self.get_flow = get_flow
+        self.flower = flower
         self.warp_slice = warp_slice
 
     def filter_along_Z_slice(self, z, kernel):
@@ -525,17 +546,16 @@ class FlowDenoising(GaussianDenoising):
         tmp_slice = np.zeros_like(self.vol[z, :, :]).astype(np.float32)
         assert kernel.size % 2 != 0 # kernel.size must be odd
         prev_flow = np.zeros(shape=(self.vol.shape[1], self.vol.shape[2], 2), dtype=np.float32)
+        self.flower.set_target(self.vol[z, :, :])
         for i in range(ks2 - 1, -1, -1):
-            flow = self.get_flow(self.vol[(z + i - ks2) % self.vol.shape[0], :, :],
-                                 self.vol[z, :, :], l, w, prev_flow)
+            flow = self.flower.get_flow(self.vol[(z + i - ks2) % self.vol.shape[0], :, :], prev_flow)
             prev_flow = flow
             OF_compensated_slice = self.warp_slice(self.vol[(z + i - ks2) % self.vol.shape[0], :, :], flow)
             tmp_slice += OF_compensated_slice*kernel[i]
         tmp_slice += self.vol[z, :, :]*kernel[ks2]
         prev_flow = np.zeros(shape=(self.vol.shape[1], self.vol.shape[2], 2), dtype=np.float32)
         for i in range(ks2 + 1, kernel.size):
-            flow = self.get_flow(self.vol[(z + i - ks2) % self.vol.shape[0], :, :],
-                                 self.vol[z, :, :], l, w, prev_flow)
+            flow = self.flower.get_flow(self.vol[(z + i - ks2) % self.vol.shape[0], :, :], prev_flow)
             prev_flow = flow
             OF_compensated_slice = self.warp_slice(self.vol[(z + i - ks2) % self.vol.shape[0], :, :], flow)
             tmp_slice += OF_compensated_slice*kernel[i]
@@ -549,17 +569,16 @@ class FlowDenoising(GaussianDenoising):
         tmp_slice = np.zeros_like(self.vol[:, y, :]).astype(np.float32)
         assert kernel.size % 2 != 0 # kernel.size must be odd
         prev_flow = np.zeros(shape=(self.vol.shape[0], self.vol.shape[2], 2), dtype=np.float32)
+        self.flower.set_target(self.vol[:, y, :])
         for i in range(ks2 - 1, -1, -1):
-            flow = self.get_flow(self.vol[:, (y + i - ks2) % self.vol.shape[1], :],
-                                 self.vol[:, y, :], l, w, prev_flow)
+            flow = self.flower.get_flow(self.vol[:, (y + i - ks2) % self.vol.shape[1], :], prev_flow)
             prev_flow = flow
             OF_compensated_slice = self.warp_slice(self.vol[:, (y + i - ks2) % self.vol.shape[1], :], flow)
             tmp_slice += OF_compensated_slice*kernel[i]
         tmp_slice += self.vol[:, y, :]*kernel[ks2]
         prev_flow = np.zeros(shape=(self.vol.shape[0], self.vol.shape[2], 2), dtype=np.float32)
         for i in range(ks2 + 1, kernel.size):
-            flow = self.get_flow(self.vol[:, (y + i - ks2) % self.vol.shape[1], :],
-                                 self.vol[:, y, :], l, w, prev_flow)
+            flow = self.flower.get_flow(self.vol[:, (y + i - ks2) % self.vol.shape[1], :], prev_flow)
             prev_flow = flow
             OF_compensated_slice = self.warp_slice(self.vol[:, (y + i - ks2) % self.vol.shape[1], :], flow)
             tmp_slice += OF_compensated_slice*kernel[i]
@@ -573,17 +592,16 @@ class FlowDenoising(GaussianDenoising):
         tmp_slice = np.zeros_like(self.vol[:, :, x]).astype(np.float32)
         assert kernel.size % 2 != 0 # kernel.size must be odd
         prev_flow = np.zeros(shape=(self.vol.shape[0], self.vol.shape[1], 2), dtype=np.float32)
+        self.flower.set_target(self.vol[:, :, x])
         for i in range(ks2 - 1, -1, -1):
-            flow = self.get_flow(self.vol[:, :, (x + i - ks2) % self.vol.shape[2]],
-                                 self.vol[:, :, x], l, w, prev_flow)
+            flow = self.flower.get_flow(self.vol[:, :, (x + i - ks2) % self.vol.shape[2]], prev_flow)
             prev_flow = flow
             OF_compensated_slice = self.warp_slice(self.vol[:, :, (x + i - ks2) % self.vol.shape[2]], flow)
             tmp_slice += OF_compensated_slice*kernel[i]
         tmp_slice += self.vol[:, :, x]*kernel[ks2]
         prev_flow = np.zeros(shape=(self.vol.shape[0], self.vol.shape[1], 2), dtype=np.float32)
         for i in range(ks2 + 1, kernel.size):
-            flow = get_flow(self.vol[:, :, (x + i - ks2) % self.vol.shape[2]],
-                            self.vol[:, :, x], l, w, prev_flow)
+            flow = self.flower.get_flow(self.vol[:, :, (x + i - ks2) % self.vol.shape[2]], prev_flow)
             prev_flow = flow
             OF_compensated_slice = self.warp_slice(self.vol[:, :, (x + i - ks2) % self.vol.shape[2]], flow)
             tmp_slice += OF_compensated_slice * kernel[i]
@@ -667,27 +685,29 @@ if __name__ == "__main__":
         from multiprocessing import Process as Task
         logging.info("Using processes")
 
+    l = args.levels
+    w = args.winsize
+
     if args.recompute_flow:
         if args.use_GPU:
-            get_flow = get_flow_without_prev_flow_GPU
+            flower = GPU_flower(l=l, w=w, iters=OF_ITERS, polyN=OF_POLY_N, polySigma=OF_POLY_SIGMA, flags=0)
             logging.info("Computing the optical flow in the GPU")
         else:
+            flower = CPU_flower(l=l, w=w, iters=OF_ITERS, polyN=OF_POLY_N, polySigma=OF_POLY_SIGMA, flags=0)
             get_flow = get_flow_without_prev_flow_CPU
             logging.info("Computing the optical flow in the CPU")
         logging.info("No reusing adjacent OF fields as predictions")
     else:
         if args.use_GPU:
-            get_flow = get_flow_with_prev_flow_GPU
+            flower = GPU_flower(l=l, w=w, iters=OF_ITERS, polyN=OF_POLY_N, polySigma=OF_POLY_SIGMA, flags=cv2.OPTFLOW_USE_INITIAL_FLOW)
             logging.info("Computing the optical flow in the GPU")
         else:
-            get_flow = get_flow_with_prev_flow_CPU
+            flower = CPU_flower(l=l, w=w, iters=OF_ITERS, polyN=OF_POLY_N, polySigma=OF_POLY_SIGMA, flags=cv2.OPTFLOW_USE_INITIAL_FLOW)
             logging.info("Computing the optical flow in the CPU")
         logging.info("Using adjacent OF fields as predictions")
 
     sigma = [float(i) for i in args.sigma]
     logging.info(f"sigma={tuple(sigma)}")
-    l = args.levels
-    w = args.winsize
     
     #logging.debug(f"Using transpose pattern {args.transpose} {type(args.transpose)}")
     #transpose_pattern = tuple([int(i) for i in args.transpose])
@@ -745,7 +765,7 @@ if __name__ == "__main__":
     if args.no_OF:
         fd = GaussianDenoising(number_of_processes, kernels)
     else:
-        fd = FlowDenoising(number_of_processes, kernels, l, w, get_flow, warp_slice)
+        fd = FlowDenoising(number_of_processes, kernels, l, w, flower, warp_slice) # Ojo, posiblemente sobren los parámetros l y w
 
     if __debug__:
         thread = threading.Thread(target=fd.feedback)
