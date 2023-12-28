@@ -89,71 +89,28 @@ def warp_slice(reference, flow):
         warping_time.value += diff
     return warped_slice
 
-def get_flow_with_prev_flow_CPU(
-        reference, target, l=OF_LEVELS, w=OF_WINDOW_SIZE, prev_flow=None):
-    if __debug__:
-        time_0 = time.perf_counter()
-    flow = cv2.calcOpticalFlowFarneback(
-        prev=target,
-        next=reference,
-        flow=prev_flow,
-        pyr_scale=0.5,
-        levels=l,
-        winsize=w,
-        iterations=OF_ITERS,
-        poly_n=OF_POLY_N,
-        poly_sigma=OF_POLY_SIGMA,
-        flags=cv2.OPTFLOW_USE_INITIAL_FLOW)
-    #flow = cv2.calcOpticalFlowFarneback(prev=target, next=reference, flow=None, pyr_scale=0.5, levels=l, winsize=w, iterations=OF_ITERS, poly_n=OF_POLY_N, poly_sigma=OF_POLY_SIGMA, flags=0)
-    if __debug__:
-        time_1 = time.perf_counter()
-        diff = time_1 - time_0
-        logging.debug(f"OF computed in \
-{1000*(diff):4.3f} ms, max_X={np.max(flow[0]):+3.2f}, \
-min_X={np.min(flow[0]):+3.2f}, max_Y={np.max(flow[1]):+3.2f}, \
-min_Y={np.min(flow[1]):+3.2f}")
-        OFE_time.value += diff
-    return flow
-
-def get_flow_without_prev_flow_CPU(
-        reference,
-        target,
-        l=OF_LEVELS,
-        w=OF_WINDOW_SIZE,
-        prev_flow=None):
-    if __debug__:
-        time_0 = time.perf_counter()
-    #flow = cv2.calcOpticalFlowFarneback(prev=target, next=reference, flow=prev_flow, pyr_scale=0.5, levels=l, winsize=w, iterations=OF_ITERS, poly_n=OF_POLY_N, poly_sigma=OF_POLY_SIGMA, flags=cv2.OPTFLOW_USE_INITIAL_FLOW)
-    flow = cv2.calcOpticalFlowFarneback(
-        prev=target,
-        next=reference,
-        flow=None,
-        pyr_scale=0.5,
-        levels=l,
-        winsize=w,
-        iterations=OF_ITERS,
-        poly_n=OF_POLY_N,
-        poly_sigma=OF_POLY_SIGMA,
-        flags=0)
-    if __debug__:
-        time_1 = time.perf_counter()
-        diff = time_1 - time_0
-        logging.debug(f"OF computed in {1000*(diff):4.3f} ms, \
-max_X={np.max(flow[0]):+3.2f}, min_X={np.min(flow[0]):+3.2f}, \
-max_Y={np.max(flow[1]):+3.2f}, min_Y={np.min(flow[1]):+3.2f}")
-        OFE_time.value += diff
-    return flow
-
 class GPU_flower:
 
     def __init__(self, l, w, iters, polyN, polySigma, flags=cv2.OPTFLOW_USE_INITIAL_FLOW):
+        if __debug__:
+            time_0 = time.perf_counter()
         self.flower = cv2.cuda_FarnebackOpticalFlow.create(numLevels=l, pyrScale=0.5, fastPyramids=False, winSize=w, numIters=iters, polyN=polyN, polySigma=polySigma, flags=flags)
+        if __debug__:
+            time_1 = time.perf_counter()
+            _OFE_time = time_1 - time_0
+            OFE_time.value += _OFE_time
 
     def set_target(self, target):
+        if __debug__:
+            time_0 = time.perf_counter()
         self.GPU_target = cv2.cuda_GpuMat()
         self.GPU_target.upload(target)
+        if __debug__:
+            transference_time.value += (time.perf_counter() - time_0)
 
     def get_flow(self, reference, prev_flow=None):
+        if __debug__:
+            time_0 = time.perf_counter()
         GPU_reference = cv2.cuda_GpuMat()
         GPU_reference.upload(reference)
         #if prev_flow != None:
@@ -161,79 +118,59 @@ class GPU_flower:
         GPU_prev_flow.upload(prev_flow)
         #else:
         #    GPU_prev_flow = None
+        if __debug__:
+            transference_time.value += (time.perf_counter() - time_0)
+        if __debug__:
+            time_0 = time.perf_counter()
         GPU_flow = cv2.cuda.FarnebackOpticalFlow.calc(self.flower, I0=self.GPU_target, I1=GPU_reference, flow=GPU_prev_flow)
         flow = GPU_flow.download()
+        if __debug__:
+            time_1 = time.perf_counter()
+            _OFE_time = time_1 - time_0
+            OFE_time.value += _OFE_time
+            diff = time_1 - time_0
+            logging.debug(f"OF computed in \
+{1000*(diff):4.3f} ms, max_X={np.max(flow[0]):+3.2f}, \
+min_X={np.min(flow[0]):+3.2f}, max_Y={np.max(flow[1]):+3.2f}, \
+min_Y={np.min(flow[1]):+3.2f}")
         return flow
 
-def get_flow_with_prev_flow_GPU(GPU_reference, GPU_target, l=OF_LEVELS, w=OF_WINDOW_SIZE, GPU_prev_flow=None):
-    if __debug__:
-        time_0 = time.perf_counter()
-    GPU_target = cv2.cuda_GpuMat()
-    GPU_target.upload(target)
-    GPU_reference = cv2.cuda_GpuMat()
-    GPU_reference.upload(reference)
-    GPU_prev_flow = cv2.cuda_GpuMat()
-    GPU_prev_flow.upload(prev_flow)
-    if __debug__:
-        transference_time.value += (time.perf_counter() - time_0)
+class CPU_flower:
 
-    if __debug__:
-        time_0 = time.perf_counter()
-    # create optical flow instance
-    flower = cv2.cuda_FarnebackOpticalFlow.create(numLevels=l, pyrScale=0.5, fastPyramids=False, winSize=w, numIters=OF_ITERS, polyN=OF_POLY_N, polySigma=OF_POLY_SIGMA, flags=cv2.OPTFLOW_USE_INITIAL_FLOW)
-    #flower = cv2.cuda_FarnebackOpticalFlow.create(numLevels=l, pyrScale=0.5, fastPyramids=False, winSize=w, numIters=OF_ITERS, polyN=OF_POLY_N, polySigma=OF_POLY_SIGMA, flags=0)
-    
-    # calculate optical flow
-    #gpu_flow = cv2.cuda.FarnebackOpticalFlow.calc(flower, I0=gpu_target, I1=gpu_reference, flow=None)
-    GPU_flow = cv2.cuda.FarnebackOpticalFlow.calc(flower, I0=GPU_target, I1=GPU_reference, flow=GPU_prev_flow)
-    if __debug__:
-        time_1 = time.perf_counter()
-        _OFE_time = time_1 - time_0
-        OFE_time.value += _OFE_time
+    def __init__(self, l=3, w=5, iters=OF_ITERS, polyN=OF_POLY_N, polySigma=OF_POLY_SIGMA, flags=cv2.OPTFLOW_USE_INITIAL_FLOW):
+        self.l = l
+        self.w = w
+        self.iters = iters
+        self.polyN = polyN
+        self.polySigma = polySigma
+        self.flags = flags
 
-    if __debug__:
-        time_2 = time.perf_counter()
-    flow = GPU_flow.download()
-    if __debug__:
-        logging.debug(f"OF computed in {1000*(_OFE_time):4.3f} ms, max_X={np.max(flow[0]):+3.2f}, min_X={np.min(flow[0]):+3.2f}, max_Y={np.max(flow[1]):+3.2f}, min_Y={np.min(flow[1]):+3.2f}")
-        transference_time.value += (time.perf_counter() - time_2)
-    
-    return flow
+    def set_target(self, target):
+        self.target = target
 
-def get_flow_without_prev_flow_GPU(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIZE, prev_flow=None):
-    if __debug__:
-        time_0 = time.perf_counter()
-    GPU_target = cv2.cuda_GpuMat()
-    GPU_target.upload(target)
-    GPU_reference = cv2.cuda_GpuMat()
-    GPU_reference.upload(reference)
-    GPU_prev_flow = cv2.cuda_GpuMat()
-    GPU_prev_flow.upload(prev_flow)
-    if __debug__:
-        transference_time.value += (time.perf_counter() - time_0)
-
-    if __debug__:
-        time_0 = time.perf_counter()
-    # create optical flow instance
-    flower = cv2.cuda_FarnebackOpticalFlow.create(numLevels=l, pyrScale=0.5, fastPyramids=False, winSize=w, numIters=OF_ITERS, polyN=OF_POLY_N, polySigma=OF_POLY_SIGMA, flags=0)
-    #flower = cv2.cuda_FarnebackOpticalFlow.create(numLevels=l, pyrScale=0.5, fastPyramids=False, winSize=w, numIters=OF_ITERS, polyN=OF_POLY_N, polySigma=OF_POLY_SIGMA, flags=0)
-    
-    # calculate optical flow
-    #gpu_flow = cv2.cuda.FarnebackOpticalFlow.calc(flower, I0=gpu_target, I1=gpu_reference, flow=None)
-    GPU_flow = cv2.cuda.FarnebackOpticalFlow.calc(flower, I0=GPU_target, I1=GPU_reference, flow=None)
-    if __debug__:
-        time_1 = time.perf_counter()
-        _OFE_time = time_1 - time_0
-        OFE_time.value += _OFE_time
-
-    if __debug__:
-        time_2 = time.perf_counter()
-    flow = GPU_flow.download()
-    if __debug__:
-        logging.debug(f"OF computed in {1000*(_OFE_time):4.3f} ms, max_X={np.max(flow[0]):+3.2f}, min_X={np.min(flow[0]):+3.2f}, max_Y={np.max(flow[1]):+3.2f}, min_Y={np.min(flow[1]):+3.2f}")
-        transference_time.value += (time.perf_counter() - time_2)
-    
-    return flow
+    def get_flow(self, reference, prev_flow=None):
+        if __debug__:
+            time_0 = time.perf_counter()
+        flow = cv2.calcOpticalFlowFarneback(
+            prev=self.target,
+            next=reference,
+            flow=prev_flow,
+            pyr_scale=0.5,
+            levels=self.l,
+            winsize=self.w,
+            iterations=self.iters,
+            poly_n=self.polyN,
+            poly_sigma=self.polySigma,
+            flags=self.flags)
+        if __debug__:
+            time_1 = time.perf_counter()
+            diff = time_1 - time_0
+            logging.debug(f"OF computed in \
+{1000*(diff):4.3f} ms, max_X={np.max(flow[0]):+3.2f}, \
+min_X={np.min(flow[0]):+3.2f}, max_Y={np.max(flow[1]):+3.2f}, \
+min_Y={np.min(flow[1]):+3.2f}")
+            OFE_time.value += diff
+        return flow
 
 class GaussianDenoising():
 
