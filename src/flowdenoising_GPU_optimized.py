@@ -631,7 +631,6 @@ if __name__ == "__main__":
             logging.info("Computing the optical flow in the GPU")
         else:
             flower = CPU_flower(l=l, w=w, iters=OF_ITERS, polyN=OF_POLY_N, polySigma=OF_POLY_SIGMA, flags=0)
-            get_flow = get_flow_without_prev_flow_CPU
             logging.info("Computing the optical flow in the CPU")
         logging.info("No reusing adjacent OF fields as predictions")
     else:
