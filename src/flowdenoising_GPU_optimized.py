@@ -632,7 +632,7 @@ if __name__ == "__main__":
         else:
             flower = CPU_flower(l=l, w=w, iters=OF_ITERS, polyN=OF_POLY_N, polySigma=OF_POLY_SIGMA, flags=0)
             logging.info("Computing the optical flow in the CPU")
-        logging.info("No reusing adjacent OF fields as predictions")
+        logging.info("Not using adjacent OF fields as predictions")
     else:
         if args.use_GPU:
             flower = GPU_flower(l=l, w=w, iters=OF_ITERS, polyN=OF_POLY_N, polySigma=OF_POLY_SIGMA, flags=cv2.OPTFLOW_USE_INITIAL_FLOW)
