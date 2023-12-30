@@ -92,6 +92,7 @@ def warp_slice(reference, flow):
 class GPU_flower:
 
     def __init__(self, l, w, iters, polyN, polySigma, flags=cv2.OPTFLOW_USE_INITIAL_FLOW):
+        # If flags==0, cv2.cuda.FarnebackOpticalFlow.calc ignores the parameter "flow".
         if __debug__:
             time_0 = time.perf_counter()
         self.flower = cv2.cuda_FarnebackOpticalFlow.create(numLevels=l, pyrScale=0.5, fastPyramids=False, winSize=w, numIters=iters, polyN=polyN, polySigma=polySigma, flags=flags)
@@ -99,25 +100,27 @@ class GPU_flower:
             time_1 = time.perf_counter()
             _OFE_time = time_1 - time_0
             OFE_time.value += _OFE_time
+        self.flags = flags
 
     def set_target(self, target):
+        self.GPU_target = cv2.cuda_GpuMat()
         if __debug__:
             time_0 = time.perf_counter()
-        self.GPU_target = cv2.cuda_GpuMat()
         self.GPU_target.upload(target)
         if __debug__:
             transference_time.value += (time.perf_counter() - time_0)
 
     def get_flow(self, reference, prev_flow=None):
+        GPU_reference = cv2.cuda_GpuMat()
+        GPU_prev_flow = cv2.cuda_GpuMat()
         if __debug__:
             time_0 = time.perf_counter()
-        GPU_reference = cv2.cuda_GpuMat()
         GPU_reference.upload(reference)
-        #if prev_flow != None:
-        GPU_prev_flow = cv2.cuda_GpuMat()
-        GPU_prev_flow.upload(prev_flow)
-        #else:
-        #    GPU_prev_flow = None
+        if self.flags != 0:
+            # If the parameter "flags==0" in
+            # cv2.cuda_FarnebackOpticalFlow.create(), this upload an
+            # be avoided.
+            GPU_prev_flow.upload(prev_flow) 
         if __debug__:
             transference_time.value += (time.perf_counter() - time_0)
         if __debug__:
@@ -485,6 +488,10 @@ class FlowDenoising(GaussianDenoising):
         prev_flow = np.zeros(shape=(self.vol.shape[1], self.vol.shape[2], 2), dtype=np.float32)
         self.flower.set_target(self.vol[z, :, :])
         for i in range(ks2 - 1, -1, -1):
+            # If the parameter "flags==0" in
+            # cv2.cuda.FarnebackOpticalFlow.calc(), the parameter
+            # "prev_flow" in flower.get_flow() is ignored, and
+            # therefore the OF is computed fom zero.
             flow = self.flower.get_flow(self.vol[(z + i - ks2) % self.vol.shape[0], :, :], prev_flow)
             prev_flow = flow
             OF_compensated_slice = self.warp_slice(self.vol[(z + i - ks2) % self.vol.shape[0], :, :], flow)
@@ -623,7 +630,9 @@ if __name__ == "__main__":
         logging.info("Using processes")
 
     l = args.levels
+    logging.info(f"l={l}")
     w = args.winsize
+    logging.info(f"w={w}")
 
     if args.recompute_flow:
         if args.use_GPU:
@@ -640,7 +649,7 @@ if __name__ == "__main__":
         else:
             flower = CPU_flower(l=l, w=w, iters=OF_ITERS, polyN=OF_POLY_N, polySigma=OF_POLY_SIGMA, flags=cv2.OPTFLOW_USE_INITIAL_FLOW)
             logging.info("Computing the optical flow in the CPU")
-        logging.info("Using adjacent OF fields as predictions")
+        logging.info("Using adjacent OF fields as predictions (the \"l\" parameter can be smaller)")
 
     sigma = [float(i) for i in args.sigma]
     logging.info(f"sigma={tuple(sigma)}")

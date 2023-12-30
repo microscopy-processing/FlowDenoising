@@ -145,13 +145,13 @@ max_Y={np.max(flow[1]):+3.2f}, min_Y={np.min(flow[1]):+3.2f}")
     return flow
 
 def get_flow_with_prev_flow_GPU(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIZE, prev_flow=None):
+    GPU_target = cv2.cuda_GpuMat()
+    GPU_reference = cv2.cuda_GpuMat()
+    GPU_prev_flow = cv2.cuda_GpuMat()
     if __debug__:
         time_0 = time.perf_counter()
-    GPU_target = cv2.cuda_GpuMat()
     GPU_target.upload(target)
-    GPU_reference = cv2.cuda_GpuMat()
     GPU_reference.upload(reference)
-    GPU_prev_flow = cv2.cuda_GpuMat()
     GPU_prev_flow.upload(prev_flow)
     if __debug__:
         transference_time.value += (time.perf_counter() - time_0)
@@ -180,13 +180,13 @@ def get_flow_with_prev_flow_GPU(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIZE
     return flow
 
 def get_flow_without_prev_flow_GPU(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIZE, prev_flow=None):
+    GPU_target = cv2.cuda_GpuMat()
+    GPU_reference = cv2.cuda_GpuMat()
+    GPU_prev_flow = cv2.cuda_GpuMat()
     if __debug__:
         time_0 = time.perf_counter()
-    GPU_target = cv2.cuda_GpuMat()
     GPU_target.upload(target)
-    GPU_reference = cv2.cuda_GpuMat()
     GPU_reference.upload(reference)
-    GPU_prev_flow = cv2.cuda_GpuMat()
     GPU_prev_flow.upload(prev_flow)
     if __debug__:
         transference_time.value += (time.perf_counter() - time_0)
