@@ -491,7 +491,7 @@ class FlowDenoising(GaussianDenoising):
             # If the parameter "flags==0" in
             # cv2.cuda.FarnebackOpticalFlow.calc(), the parameter
             # "prev_flow" in flower.get_flow() is ignored, and
-            # therefore the OF is computed fom zero.
+            # therefore the OF is computed from zero.
             flow = self.flower.get_flow(self.vol[(z + i - ks2) % self.vol.shape[0], :, :], prev_flow)
             prev_flow = flow
             OF_compensated_slice = self.warp_slice(self.vol[(z + i - ks2) % self.vol.shape[0], :, :], flow)
