@@ -117,6 +117,7 @@ class GPU_flower:
         self.target_idx = target_idx
         self.GPU_target = self.GPU_vol[target_idx]
         print("target_idx =", target_idx)
+        print("target[0][0] = ", self.GPU_target.download()[0,0])
 
     def get_flow(self, reference_idx, prev_flow):
         GPU_reference = self.GPU_vol[reference_idx]
@@ -566,6 +567,7 @@ class FlowDenoising(GaussianDenoising):
         GPU_vol = [cv2.cuda_GpuMat()]*(self.vol.shape[0])
         for z in range(vol.shape[0]):
             GPU_vol[z].upload(self.vol[z, :, :])
+            print(f"self.vol[{z},:,:][0, 0]={self.vol[z, :, :][0, 0]}")
         self.flower.set_vol(GPU_vol)
         for z in range(chunk_size):
             self.filter_along_Z_slice(chunk_index*chunk_size + z + chunk_offset, kernel)
