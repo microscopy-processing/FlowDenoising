@@ -125,7 +125,7 @@ class GPU_flower:
             transference_time.value += (time.perf_counter() - time_0)
         if __debug__:
             time_0 = time.perf_counter()
-        print(self.GPU_target.download()[0,0])
+        #print(self.GPU_target.download()[0,0])
         GPU_flow = cv2.cuda.FarnebackOpticalFlow.calc(self.flower, I0=self.GPU_target, I1=GPU_reference, flow=GPU_prev_flow)
         flow = GPU_flow.download()
         if __debug__:

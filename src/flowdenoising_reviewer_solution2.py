@@ -116,8 +116,8 @@ class GPU_flower:
     def set_target(self, target_idx):
         self.target_idx = target_idx
         self.GPU_target = self.GPU_vol[target_idx]
-        print("target_idx =", target_idx)
-        print("target[0][0] = ", self.GPU_target.download()[0,0])
+        #print("target_idx =", target_idx)
+        #print("target[0][0] = ", self.GPU_target.download()[0,0])
 
     def get_flow(self, reference_idx, prev_flow):
         GPU_reference = self.GPU_vol[reference_idx]
@@ -133,7 +133,7 @@ class GPU_flower:
             transference_time.value += (time.perf_counter() - time_0)
         if __debug__:
             time_0 = time.perf_counter()
-        print(self.GPU_target.download()[0,0])
+        #print(self.GPU_target.download()[0,0])
         GPU_flow = cv2.cuda.FarnebackOpticalFlow.calc(self.flower, I0=self.GPU_target, I1=GPU_reference, flow=GPU_prev_flow)
         flow = GPU_flow.download()
         if __debug__:
@@ -490,6 +490,47 @@ class FlowDenoising(GaussianDenoising):
         self.flower = flower
         self.warp_slice = warp_slice
 
+    def filter_along_Z_chunk(self, chunk_index, chunk_size, chunk_offset, kernel):
+        #GPU_vol = [cv2.cuda_GpuMat()]*(self.vol.shape[0])
+        GPU_vol = []
+        for z in range(self.vol.shape[0]):
+            GPU_vol.append(cv2.cuda_GpuMat())
+        for z in range(self.vol.shape[0]):
+            GPU_vol[z].upload(self.vol[z, :, :])
+            #print(f"GPU_vol[{z}]={GPU_vol[z]}")
+            #print(f"self.vol[{z},:,:][0, 0]={self.vol[z, :, :][0, 0]}")
+        self.flower.set_vol(GPU_vol)
+        #for z in range(chunk_size):
+            #self.flower.set_target(z)
+            #slice = self.flower.GPU_vol[z].download()
+            #print(f"slice[{z}][0,0]={slice[0,0]}")
+        for z in range(chunk_size):
+            self.filter_along_Z_slice(chunk_index*chunk_size + z + chunk_offset, kernel)
+        return chunk_index # Probar a quitar este return
+        #print("5", np.max(self.filtered_vol), self.filtered_vol.data)
+
+    def filter_along_Y_chunk(self, chunk_index, chunk_size, chunk_offset, kernel):
+        GPU_vol = []
+        for y in range(self.vol.shape[1]):
+            GPU_vol.append(cv2.cuda_GpuMat())
+        for y in range(self.vol.shape[1]):
+            GPU_vol[y].upload(self.vol[:, y, :])
+        self.flower.set_vol(GPU_vol)
+        for y in range(chunk_size):
+            self.filter_along_Y_slice(chunk_index*chunk_size + y + chunk_offset, kernel)
+        return chunk_index
+
+    def filter_along_X_chunk(self, chunk_index, chunk_size, chunk_offset, kernel):
+        GPU_vol = []
+        for x in range(self.vol.shape[2]):
+            GPU_vol.append(cv2.cuda_GpuMat())
+        for x in range(vol.shape[2]):
+            GPU_vol[x].upload(self.vol[:, :, x])
+        self.flower.set_vol(GPU_vol)
+        for x in range(chunk_size):
+            self.filter_along_X_slice(chunk_index*chunk_size + x + chunk_offset, kernel)
+        return chunk_index
+
     def filter_along_Z_slice(self, z, kernel):
         ks2 = kernel.size//2
         tmp_slice = np.zeros_like(self.vol[z, :, :]).astype(np.float32)
@@ -562,35 +603,6 @@ class FlowDenoising(GaussianDenoising):
         if __debug__:
             #self.progress.value += 1
             progress.value += 1
-
-    def filter_along_Z_chunk(self, chunk_index, chunk_size, chunk_offset, kernel):
-        GPU_vol = [cv2.cuda_GpuMat()]*(self.vol.shape[0])
-        for z in range(vol.shape[0]):
-            GPU_vol[z].upload(self.vol[z, :, :])
-            print(f"self.vol[{z},:,:][0, 0]={self.vol[z, :, :][0, 0]}")
-        self.flower.set_vol(GPU_vol)
-        for z in range(chunk_size):
-            self.filter_along_Z_slice(chunk_index*chunk_size + z + chunk_offset, kernel)
-        return chunk_index # Probar a quitar este return
-        #print("5", np.max(self.filtered_vol), self.filtered_vol.data)
-
-    def filter_along_Y_chunk(self, chunk_index, chunk_size, chunk_offset, kernel):
-        GPU_vol = [cv2.cuda_GpuMat()]*(self.vol.shape[1])
-        for y in range(vol.shape[1]):
-            GPU_vol[y].upload(self.vol[:, y, :])
-        self.flower.set_vol(GPU_vol)
-        for y in range(chunk_size):
-            self.filter_along_Y_slice(chunk_index*chunk_size + y + chunk_offset, kernel)
-        return chunk_index
-
-    def filter_along_X_chunk(self, chunk_index, chunk_size, chunk_offset, kernel):
-        GPU_vol = [cv2.cuda_GpuMat()]*(self.vol.shape[2])
-        for x in range(vol.shape[2]):
-            GPU_vol[x].upload(self.vol[:, :, x])
-        self.flower.set_vol(GPU_vol)
-        for x in range(chunk_size):
-            self.filter_along_X_slice(chunk_index*chunk_size + x + chunk_offset, kernel)
-        return chunk_index
 
 def int_or_str(text):
     '''Helper function for argument parsing.'''
