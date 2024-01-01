@@ -493,10 +493,20 @@ class FlowDenoising(GaussianDenoising):
     def filter_along_Z_chunk(self, chunk_index, chunk_size, chunk_offset, kernel):
         #GPU_vol = [cv2.cuda_GpuMat()]*(self.vol.shape[0])
         GPU_vol = []
+        N_slices_to_upload = chunk_size + kernel.size
+        #N_slices_to_upload = self.vol.shape[0]
+        #N_slices_to_upload = chunk_size
+        #print("N_slices_to_upload =", N_slices_to_upload)
+        #time.sleep(10)
+        #N_slices_to_upload = self.vol.shape[0]
         for z in range(self.vol.shape[0]):
             GPU_vol.append(cv2.cuda_GpuMat())
-        for z in range(self.vol.shape[0]):
-            GPU_vol[z].upload(self.vol[z, :, :])
+        #for z in range(self.vol.shape[0]):
+        for z in range(N_slices_to_upload):
+            slice_to_upload = (chunk_index*chunk_size + z + chunk_offset - kernel.size//2) % self.vol.shape[0]
+            #print(slice_to_upload)
+            GPU_vol[slice_to_upload].upload(self.vol[slice_to_upload, :, :])
+            #GPU_vol[z].upload(self.vol[z, :, :])
             #print(f"GPU_vol[{z}]={GPU_vol[z]}")
             #print(f"self.vol[{z},:,:][0, 0]={self.vol[z, :, :][0, 0]}")
         self.flower.set_vol(GPU_vol)
@@ -511,10 +521,12 @@ class FlowDenoising(GaussianDenoising):
 
     def filter_along_Y_chunk(self, chunk_index, chunk_size, chunk_offset, kernel):
         GPU_vol = []
+        N_slices_to_upload = chunk_size + kernel.size
         for y in range(self.vol.shape[1]):
             GPU_vol.append(cv2.cuda_GpuMat())
-        for y in range(self.vol.shape[1]):
-            GPU_vol[y].upload(self.vol[:, y, :])
+        for y in range(N_slices_to_upload):
+            slice_to_upload = (chunk_index*chunk_size + y + chunk_offset - kernel.size//2) % self.vol.shape[1]
+            GPU_vol[slice_to_upload].upload(self.vol[:, slice_to_upload, :])
         self.flower.set_vol(GPU_vol)
         for y in range(chunk_size):
             self.filter_along_Y_slice(chunk_index*chunk_size + y + chunk_offset, kernel)
@@ -522,10 +534,12 @@ class FlowDenoising(GaussianDenoising):
 
     def filter_along_X_chunk(self, chunk_index, chunk_size, chunk_offset, kernel):
         GPU_vol = []
+        N_slices_to_upload = chunk_size + kernel.size
         for x in range(self.vol.shape[2]):
             GPU_vol.append(cv2.cuda_GpuMat())
-        for x in range(vol.shape[2]):
-            GPU_vol[x].upload(self.vol[:, :, x])
+        for x in range(N_slices_to_upload):
+            slice_to_upload = (chunk_index*chunk_size + x + chunk_offset - kernel.size//2) % self.vol.shape[2]
+            GPU_vol[slice_to_upload].upload(self.vol[:, :, slice_to_upload])
         self.flower.set_vol(GPU_vol)
         for x in range(chunk_size):
             self.filter_along_X_slice(chunk_index*chunk_size + x + chunk_offset, kernel)
@@ -534,7 +548,6 @@ class FlowDenoising(GaussianDenoising):
     def filter_along_Z_slice(self, z, kernel):
         ks2 = kernel.size//2
         tmp_slice = np.zeros_like(self.vol[z, :, :]).astype(np.float32)
-        assert kernel.size % 2 != 0 # kernel.size must be odd
         prev_flow = np.zeros(shape=(self.vol.shape[1], self.vol.shape[2], 2), dtype=np.float32)
         self.flower.set_target(z)
         for i in range(ks2 - 1, -1, -1):
@@ -561,7 +574,6 @@ class FlowDenoising(GaussianDenoising):
     def filter_along_Y_slice(self, y, kernel):
         ks2 = kernel.size//2
         tmp_slice = np.zeros_like(self.vol[:, y, :]).astype(np.float32)
-        assert kernel.size % 2 != 0 # kernel.size must be odd
         prev_flow = np.zeros(shape=(self.vol.shape[0], self.vol.shape[2], 2), dtype=np.float32)
         self.flower.set_target(y)
         for i in range(ks2 - 1, -1, -1):
@@ -584,7 +596,6 @@ class FlowDenoising(GaussianDenoising):
     def filter_along_X_slice(self, x, kernel):
         ks2 = kernel.size//2
         tmp_slice = np.zeros_like(self.vol[:, :, x]).astype(np.float32)
-        assert kernel.size % 2 != 0 # kernel.size must be odd
         prev_flow = np.zeros(shape=(self.vol.shape[0], self.vol.shape[1], 2), dtype=np.float32)
         self.flower.set_target(x)
         for i in range(ks2 - 1, -1, -1):
@@ -745,7 +756,10 @@ if __name__ == "__main__":
     kernels[1] = get_gaussian_kernel(sigma[1])
     kernels[2] = get_gaussian_kernel(sigma[2])
     logging.info(f"length of each filter (Z, Y, X) = {[len(i) for i in [*kernels]]}")
-    
+    assert kernels[0].size % 2 != 0 # kernel.size must be odd
+    assert kernels[1].size % 2 != 0 # kernel.size must be odd
+    assert kernels[2].size % 2 != 0 # kernel.size must be odd
+
     #vol = np.transpose(vol, transpose_pattern)
     #logging.info(f"After transposing, shape of the volume to denoise (Z, Y, X) = {vol.shape}")
 

@@ -485,7 +485,6 @@ class FlowDenoising(GaussianDenoising):
     def filter_along_Z_slice(self, z, kernel):
         ks2 = kernel.size//2
         tmp_slice = np.zeros_like(self.vol[z, :, :]).astype(np.float32)
-        assert kernel.size % 2 != 0 # kernel.size must be odd
         prev_flow = np.zeros(shape=(self.vol.shape[1], self.vol.shape[2], 2), dtype=np.float32)
         self.flower.set_target(self.vol[z, :, :])
         for i in range(ks2 - 1, -1, -1):
@@ -512,7 +511,7 @@ class FlowDenoising(GaussianDenoising):
     def filter_along_Y_slice(self, y, kernel):
         ks2 = kernel.size//2
         tmp_slice = np.zeros_like(self.vol[:, y, :]).astype(np.float32)
-        assert kernel.size % 2 != 0 # kernel.size must be odd
+        #assert kernel.size % 2 != 0 # kernel.size must be odd
         prev_flow = np.zeros(shape=(self.vol.shape[0], self.vol.shape[2], 2), dtype=np.float32)
         self.flower.set_target(self.vol[:, y, :])
         for i in range(ks2 - 1, -1, -1):
@@ -535,7 +534,7 @@ class FlowDenoising(GaussianDenoising):
     def filter_along_X_slice(self, x, kernel):
         ks2 = kernel.size//2
         tmp_slice = np.zeros_like(self.vol[:, :, x]).astype(np.float32)
-        assert kernel.size % 2 != 0 # kernel.size must be odd
+        #assert kernel.size % 2 != 0 # kernel.size must be odd
         prev_flow = np.zeros(shape=(self.vol.shape[0], self.vol.shape[1], 2), dtype=np.float32)
         self.flower.set_target(self.vol[:, :, x])
         for i in range(ks2 - 1, -1, -1):
@@ -696,7 +695,10 @@ if __name__ == "__main__":
     kernels[1] = get_gaussian_kernel(sigma[1])
     kernels[2] = get_gaussian_kernel(sigma[2])
     logging.info(f"length of each filter (Z, Y, X) = {[len(i) for i in [*kernels]]}")
-    
+    assert kernels[0].size % 2 != 0 # kernel.size must be odd
+    assert kernels[1].size % 2 != 0 # kernel.size must be odd
+    assert kernels[2].size % 2 != 0 # kernel.size must be odd
+
     #vol = np.transpose(vol, transpose_pattern)
     #logging.info(f"After transposing, shape of the volume to denoise (Z, Y, X) = {vol.shape}")
 
