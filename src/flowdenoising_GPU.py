@@ -2,20 +2,13 @@
 '''3D Gaussian filtering controlled by the optical flow.
 '''
 
-#
-# "flowdenoising_GPU.py" is part of
-# "https://github.com/microscopy-processing/FlowDenoising", authored
-# by:
+# "flowdenoising.py" is part of "https://github.com/microscopy-processing/FlowDenoising",
+# authored by:
 #
 # * J.J. Fernández (CSIC).
 # * V. González-Ruiz (UAL).
 #
-# This version of the module flowdenoising.py computes the Farneback
-# algorithm in the GPU. The rest of computations are done in the CPU (only one core).
-#
-# Please, refer to the LICENSE.txt to know the terms of usage of this
-# software.
-#
+# Please, refer to the file LICENSE.txt to know the terms of usage of this software.
 
 import logging
 import os
@@ -30,288 +23,536 @@ import mrcfile
 import argparse
 import threading
 import time
-from shared_code import *
+import sys
+import hashlib
+import concurrent
+import multiprocessing
+from multiprocessing import Value#, Lock
+from multiprocessing.shared_memory import SharedMemory
+#from multiprocessing import Process as Task
+#from threading import Thread as Task
+#from concurrent.futures import ThreadPoolExecutor as PoolExecutor
+from concurrent.futures.process import ProcessPoolExecutor as PoolExecutor
+
+done = False
+
+#def init_pool_processes(the_lock):
+#    '''Initialize each process with a global variable lock.
+#    '''
+#    global lock
+#    lock = the_lock
 
 LOGGING_FORMAT = "[%(asctime)s] (%(levelname)s) %(message)s"
 
-__percent__ = 0
+if __debug__:
+    # In shared memory
+    progress = Value('f', 0)
+    OFE_time = Value('f', 0)
+    warping_time = Value('f', 0)
+    convolution_time = Value('f', 0)
+    transference_time = Value('f', 0)
+
+def get_gaussian_kernel(sigma=1):
+    logging.info(f"Computing gaussian kernel with sigma={sigma}")
+    number_of_coeffs = 3
+    number_of_zeros = 0
+    while number_of_zeros < 2 :
+        delta = np.zeros(number_of_coeffs)
+        delta[delta.size//2] = 1
+        coeffs = scipy.ndimage.gaussian_filter1d(delta, sigma=sigma)
+        number_of_zeros = coeffs.size - np.count_nonzero(coeffs)
+        number_of_coeffs += 1
+    logging.info(f"Kernel computed: {coeffs[1:-1]}")
+    return coeffs[1:-1]
+
+OFCA_EXTENSION_MODE = cv2.BORDER_REPLICATE
+OF_LEVELS = 3
+OF_WINDOW_SIZE = 5
+OF_ITERS = 3
+OF_POLY_N = 5
+OF_POLY_SIGMA = 1.2
+SIGMA = 2.0
 
 def warp_slice(reference, flow):
+    if __debug__:
+        time_0 = time.perf_counter()
     height, width = flow.shape[:2]
     map_x = np.tile(np.arange(width), (height, 1))
     map_y = np.swapaxes(np.tile(np.arange(height), (width, 1)), 0, 1)
     map_xy = (flow + np.dstack((map_x, map_y))).astype('float32')
-    #gpu_reference = cv2.cuda_GpuMat(rows=reference.shape[0], cols=reference.shape[1], type=reference.dtype)
-    #gpu_reference = cv2.cuda_GpuMat()
-    #gpu_reference.upload(reference)
-    #gpu_map_x = cv2.cuda_GpuMat()
-    #gpu_map_x.upload(map_xy[..., 0])
-    #gpu_map_y = cv2.cuda_GpuMat()
-    #gpu_map_y.upload(map_xy[..., 1]) 
-    #gpu_warped_slice = cv2.cuda.remap(src=gpu_reference, xmap=gpu_map_x, ymap=gpu_map_y, interpolation=cv2.INTER_LINEAR, borderMode=OFCA_EXTENSION_MODE)
-    #warped_slice = gpu_warped_slice.download()
-    warped_slice = cv2.remap(src=reference, map1=map_xy, map2=None, interpolation=cv2.INTER_LINEAR, borderMode=OFCA_EXTENSION_MODE)
+    warped_slice = cv2.remap(reference, map_xy, None,
+                             interpolation=cv2.INTER_LINEAR,
+                             borderMode=OFCA_EXTENSION_MODE)
+    if __debug__:
+        time_1 = time.perf_counter()
+        diff = time_1 - time_0
+        warping_time.value += diff
     return warped_slice
 
-def get_flow(reference, target, l=OF_LEVELS, w=OF_WINDOW_SIZE, prev_flow=None):
-    if __debug__:
-        time_0 = time.perf_counter()
-    GPU_target = cv2.cuda_GpuMat()
-    GPU_target.upload(target)
-    GPU_reference = cv2.cuda_GpuMat()
-    GPU_reference.upload(reference)
-    GPU_prev_flow = cv2.cuda_GpuMat()
-    GPU_prev_flow.upload(prev_flow)
+class GPU_flower:
 
-    # create optical flow instance
-    flower = cv2.cuda_FarnebackOpticalFlow.create(numLevels=l, pyrScale=0.5, fastPyramids=False, winSize=w, numIters=OF_ITERS, polyN=OF_POLY_N, polySigma=OF_POLY_SIGMA, flags=cv2.OPTFLOW_USE_INITIAL_FLOW)
-    #flower = cv2.cuda_FarnebackOpticalFlow.create(numLevels=l, pyrScale=0.5, fastPyramids=False, winSize=w, numIters=OF_ITERS, polyN=OF_POLY_N, polySigma=OF_POLY_SIGMA, flags=0)
-    
-    # calculate optical flow
-    #gpu_flow = cv2.cuda.FarnebackOpticalFlow.calc(flower, I0=gpu_target, I1=gpu_reference, flow=None)
-    GPU_flow = cv2.cuda.FarnebackOpticalFlow.calc(flower, I0=GPU_target, I1=GPU_reference, flow=GPU_prev_flow)
+    def __init__(self, l, w, iters, polyN, polySigma, flags=cv2.OPTFLOW_USE_INITIAL_FLOW):
+        # If flags==0, cv2.cuda.FarnebackOpticalFlow.calc ignores the parameter "flow".
+        if __debug__:
+            time_0 = time.perf_counter()
+        self.flower = cv2.cuda_FarnebackOpticalFlow.create(numLevels=l, pyrScale=0.5, fastPyramids=False, winSize=w, numIters=iters, polyN=polyN, polySigma=polySigma, flags=flags)
+        if __debug__:
+            time_1 = time.perf_counter()
+            _OFE_time = time_1 - time_0
+            OFE_time.value += _OFE_time
+        self.flags = flags
 
-    flow = GPU_flow.download()
-    
-    if __debug__:
-        time_1 = time.perf_counter()
-        logging.debug(f"OF computed in {1000*(time_1 - time_0):4.3f} ms, max_X={np.max(flow[0]):+3.2f}, min_X={np.min(flow[0]):+3.2f}, max_Y={np.max(flow[1]):+3.2f}, min_Y={np.min(flow[1]):+3.2f}")
-    return flow
+    def set_target(self, target):
+        self.GPU_target = cv2.cuda_GpuMat()
+        if __debug__:
+            time_0 = time.perf_counter()
+        self.GPU_target.upload(target)
+        if __debug__:
+            transference_time.value += (time.perf_counter() - time_0)
 
-def OF_filter_along_Z(vol, kernel, l, w, mean):
-    #cv2.cuda.setDevice(0) # No es necesario
-    ks2 = kernel.size//2
-    global __percent__
-    logging.info(f"Filtering along Z with l={l}, w={w}, and kernel length={kernel.size}")
-    if __debug__:
-        time_0 = time.perf_counter()
-        min_OF = 1000
-        max_OF = -1000 
-    filtered_vol = np.zeros_like(vol).astype(np.float32)
-    shape_of_vol = np.shape(vol)
-    Z_dim = vol.shape[0]
-    for z in range(Z_dim):
-        tmp_slice = np.zeros_like(vol[z]).astype(np.float32)
-        #tmp_slice = cp.zeros_like(vol[z]).astype(np.float32)
-        assert kernel.size % 2 != 0 # kernel.size must be odd
-        prev_flow = np.zeros(shape=(shape_of_vol[1], shape_of_vol[2], 2), dtype=np.float32)
-        #GPU_prev_flow = cv2.cuda_GpuMat()
-        #GPU_prev_flow.upload(prev_flow)
-        for i in range(ks2 - 1, -1, -1):
-            flow = get_flow(vol[(z + i - ks2) % vol.shape[0], :, :], vol[z, :, :], l, w, prev_flow)
-            prev_flow = flow
-            if __debug__:
-                min_OF_iter = np.min(flow)
-                if min_OF_iter < min_OF:
-                    min_OF = min_OF_iter
-                max_OF_iter = np.max(flow)
-                if max_OF < max_OF_iter:
-                    max_OF = max_OF_iter
-            OF_compensated_slice = warp_slice(vol[(z + i - ks2) % vol.shape[0], :, :], flow)
-            #_OF_compensated_slice = cp.array(OF_compensated_slice)
-            #_kernel = cp.array(kernel[i])
-            tmp_slice += OF_compensated_slice * kernel[i]
-            #tmp_slice += _OF_compensated_slice * _kernel
-            #tmp_slice = tmp_slice.get()
-        tmp_slice += vol[z, :, :] * kernel[ks2]
-        prev_flow = np.zeros(shape=(shape_of_vol[1], shape_of_vol[2], 2), dtype=np.float32)
-        for i in range(ks2 + 1, kernel.size):
-            flow = get_flow(vol[(z + i - ks2) % vol.shape[0], :, :], vol[z, :, :], l, w, prev_flow)
-            prev_flow = flow
-            if __debug__:
-                min_OF_iter = np.min(flow)
-                if min_OF_iter < min_OF:
-                    min_OF = min_OF_iter
-                max_OF_iter = np.max(flow)
-                if max_OF < max_OF_iter:
-                    max_OF = max_OF_iter
-            OF_compensated_slice = warp_slice(vol[(z + i - ks2) % vol.shape[0], :, :], flow)
-            tmp_slice += OF_compensated_slice * kernel[i]
-        filtered_vol[z, :, :] = tmp_slice
-        __percent__ = int(100*(z/Z_dim))
-    if __debug__:
-        time_1 = time.perf_counter()
-        logging.debug(f"Filtering along Z spent {time_1 - time_0} seconds")
-        logging.debug(f"Min OF val: {min_OF}")
-        logging.debug(f"Max OF val: {max_OF}")
-    return filtered_vol
+    def get_flow(self, reference, prev_flow=None):
+        GPU_reference = cv2.cuda_GpuMat()
+        GPU_prev_flow = cv2.cuda_GpuMat()
+        if __debug__:
+            time_0 = time.perf_counter()
+        GPU_reference.upload(reference)
+        if self.flags != 0:
+            # If the parameter "flags==0" in
+            # cv2.cuda_FarnebackOpticalFlow.create(), this upload an
+            # be avoided.
+            GPU_prev_flow.upload(prev_flow) 
+        if __debug__:
+            transference_time.value += (time.perf_counter() - time_0)
+        if __debug__:
+            time_0 = time.perf_counter()
+        #print(self.GPU_target.download()[0,0])
+        GPU_flow = cv2.cuda.FarnebackOpticalFlow.calc(self.flower, I0=self.GPU_target, I1=GPU_reference, flow=GPU_prev_flow)
+        flow = GPU_flow.download()
+        if __debug__:
+            time_1 = time.perf_counter()
+            _OFE_time = time_1 - time_0
+            OFE_time.value += _OFE_time
+            diff = time_1 - time_0
+            logging.debug(f"OF computed in \
+{1000*(diff):4.3f} ms, max_X={np.max(flow[0]):+3.2f}, \
+min_X={np.min(flow[0]):+3.2f}, max_Y={np.max(flow[1]):+3.2f}, \
+min_Y={np.min(flow[1]):+3.2f}")
+        return flow
 
-def no_OF_filter_along_Z(vol, kernel, mean):
-    ks2 = kernel.size//2
-    global __percent__
-    logging.info(f"Filtering along Z with l={l}, w={w}, and kernel length={kernel.size}")
-    if __debug__:
-        time_0 = time.perf_counter()
-    filtered_vol = np.zeros_like(vol).astype(np.float32)
-    shape_of_vol = np.shape(vol)
-    Z_dim = vol.shape[0]
-    for z in range(Z_dim):
-        tmp_slice = np.zeros_like(vol[z, :, :]).astype(np.float32)
+class CPU_flower:
+
+    def __init__(self, l=3, w=5, iters=OF_ITERS, polyN=OF_POLY_N, polySigma=OF_POLY_SIGMA, flags=cv2.OPTFLOW_USE_INITIAL_FLOW):
+        self.l = l
+        self.w = w
+        self.iters = iters
+        self.polyN = polyN
+        self.polySigma = polySigma
+        self.flags = flags
+
+    def set_target(self, target):
+        self.target = target
+
+    def get_flow(self, reference, prev_flow=None):
+        if __debug__:
+            time_0 = time.perf_counter()
+        flow = cv2.calcOpticalFlowFarneback(
+            prev=self.target,
+            next=reference,
+            flow=prev_flow,
+            pyr_scale=0.5,
+            levels=self.l,
+            winsize=self.w,
+            iterations=self.iters,
+            poly_n=self.polyN,
+            poly_sigma=self.polySigma,
+            flags=self.flags)
+        if __debug__:
+            time_1 = time.perf_counter()
+            diff = time_1 - time_0
+            logging.debug(f"OF computed in \
+{1000*(diff):4.3f} ms, max_X={np.max(flow[0]):+3.2f}, \
+min_X={np.min(flow[0]):+3.2f}, max_Y={np.max(flow[1]):+3.2f}, \
+min_Y={np.min(flow[1]):+3.2f}")
+            OFE_time.value += diff
+        return flow
+
+class GaussianDenoising():
+
+    def __init__(self, number_of_processes, kernels):
+        #if __debug__:
+        #    self.progress = Value('f', 0)
+        self.number_of_processes = number_of_processes
+        self.kernels = kernels
+
+    def filter_along_Z_slice(self, z, kernel):
+        ks2 = kernel.size//2
+        tmp_slice = np.zeros(shape=(self.vol.shape[1], self.vol.shape[2]), dtype=np.float32)
         for i in range(kernel.size):
-            tmp_slice += vol[(z + i - ks2) % vol.shape[0], :, :] * kernel[i]
-        filtered_vol[z, :, :] = tmp_slice
-        #logging.info(f"Filtering along Z {int(100*(z/Z_dim))}%")
-        __percent__ = int(100*(z/Z_dim))
-    if __debug__:
-        time_1 = time.perf_counter()
-        logging.debug(f"Filtering along Z spent {time_1 - time_0} seconds")
-    return filtered_vol
+            tmp_slice += self.vol[(z + i - ks2) % self.vol.shape[0], :, :]*kernel[i]
+        self.filtered_vol[z, :, :] = tmp_slice
+        if __debug__:
+            #self.progress.value += 1
+            progress.value += 1
+        #print("3", np.max(self.filtered_vol), self.filtered_vol.data)
 
-def OF_filter_along_Y(vol, kernel, l, w, mean):
-    ks2 = kernel.size//2
-    global __percent__
-    logging.info(f"Filtering along Y with l={l}, w={w}, and kernel length={kernel.size}")
-    if __debug__:
-        time_0 = time.perf_counter()
-        min_OF = 1000
-        max_OF = -1000 
-    filtered_vol = np.zeros_like(vol).astype(np.float32)
-    shape_of_vol = np.shape(vol)
-    Y_dim = vol.shape[1]
-    #prev_flow = None
-    for y in range(Y_dim):
-        tmp_slice = np.zeros_like(vol[:, y, :]).astype(np.float32)
-        assert kernel.size % 2 != 0 # kernel.size must be odd
-        prev_flow = np.zeros(shape=(shape_of_vol[0], shape_of_vol[2], 2), dtype=np.float32)
-        for i in range(ks2 - 1, -1, -1):
-            flow = get_flow(vol[:, (y + i - ks2) % vol.shape[1] , :], vol[:, y, :], l, w, prev_flow)
-            prev_flow = flow
-            if __debug__:
-                min_OF_iter = np.min(flow)
-                if min_OF_iter < min_OF:
-                    min_OF = min_OF_iter
-                max_OF_iter = np.max(flow)
-                if max_OF < max_OF_iter:
-                    max_OF = max_OF_iter                        
-            OF_compensated_slice = warp_slice(vol[:, (y + i - ks2) % vol.shape[1], :], flow)
-            tmp_slice += OF_compensated_slice * kernel[i]
-        tmp_slice += vol[:, y, :] * kernel[ks2]
-        prev_flow = np.zeros(shape=(shape_of_vol[0], shape_of_vol[2], 2), dtype=np.float32)
-        for i in range(ks2 + 1, kernel.size):
-            flow = get_flow(vol[:, (y + i - ks2) % vol.shape[1], :], vol[:, y, :], l, w, prev_flow)
-            prev_flow = flow
-            if __debug__:
-                min_OF_iter = np.min(flow)
-                if min_OF_iter < min_OF:
-                    min_OF = min_OF_iter
-                max_OF_iter = np.max(flow)
-                if max_OF < max_OF_iter:
-                    max_OF = max_OF_iter                        
-            OF_compensated_slice = warp_slice(vol[:, (y + i - ks2) % vol.shape[1], :], flow)
-            tmp_slice += OF_compensated_slice * kernel[i]
-        filtered_vol[:, y, :] = tmp_slice
-        __percent__ = int(100*(y/Y_dim))
-    if __debug__:
-        time_1 = time.perf_counter()
-        logging.debug(f"Filtering along Y spent {time_1 - time_0} seconds")
-        logging.debug(f"Min OF val: {min_OF}")
-        logging.debug(f"Max OF val: {max_OF}")
-    return filtered_vol
-
-def no_OF_filter_along_Y(vol, kernel, mean):
-    ks2 = kernel.size//2
-    global __percent__
-    logging.info(f"Filtering along Y with l={l}, w={w}, and kernel length={kernel.size}")
-    if __debug__:
-        time_0 = time.perf_counter()
-    filtered_vol = np.zeros_like(vol).astype(np.float32)
-    shape_of_vol = np.shape(vol)
-    Y_dim = vol.shape[1]
-    for y in range(Y_dim):
-        tmp_slice = np.zeros_like(vol[:, y, :]).astype(np.float32)
+    def filter_along_Y_slice(self, y, kernel):
+        ks2 = kernel.size//2
+        tmp_slice = np.zeros(shape=(self.vol.shape[0], self.vol.shape[2]), dtype=np.float32)
         for i in range(kernel.size):
-            tmp_slice += vol[:, (y + i - ks2) % vol.shape[1], :] * kernel[i]
-        filtered_vol[:, y, :] = tmp_slice
-        #logging.info(f"Filtering along Y {int(100*(y/Y_dim))}%")
-        __percent__ = int(100*(y/Y_dim))
-    if __debug__:
-        time_1 = time.perf_counter()
-        logging.debug(f"Filtering along Y spent {time_1 - time_0} seconds")
-    return filtered_vol
+            tmp_slice += self.vol[:, (y + i - ks2) % self.vol.shape[1], :]*kernel[i]
+        self.filtered_vol[:, y, :] = tmp_slice
+        if __debug__:
+            #self.progress.value += 1
+            progress.value += 1
 
-def OF_filter_along_X(vol, kernel, l, w, mean):
-    ks2 = kernel.size//2
-    global __percent__
-    logging.info(f"Filtering along X with l={l}, w={w}, and kernel length={kernel.size}")
-    if __debug__:
-        time_0 = time.perf_counter()
-        min_OF = 1000
-        max_OF = -1000
-    filtered_vol = np.zeros_like(vol).astype(np.float32)
-    shape_of_vol = np.shape(vol)
-    X_dim = vol.shape[2]
-    #prev_flow = None
-    for x in range(X_dim):
-        tmp_slice = np.zeros_like(vol[:, :, x]).astype(np.float32)
-        assert kernel.size % 2 != 0 # kernel.size must be odd
-        prev_flow = np.zeros(shape=(shape_of_vol[0], shape_of_vol[1], 2), dtype=np.float32)
-        for i in range(ks2 - 1, -1, -1):
-            flow = get_flow(vol[:, :, (x + i - ks2) % vol.shape[2]], vol[:, :, x], l, w, prev_flow)
-            prev_flow = flow
-            if __debug__:
-                min_OF_iter = np.min(flow)
-                if min_OF_iter < min_OF:
-                    min_OF = min_OF_iter
-                max_OF_iter = np.max(flow)
-                if max_OF < max_OF_iter:
-                    max_OF = max_OF_iter
-            OF_compensated_slice = warp_slice(vol[:, :, (x + i - ks2) % vol.shape[2]], flow)
-            tmp_slice += OF_compensated_slice * kernel[i]
-        tmp_slice += vol[:, :, x] * kernel[ks2]
-        prev_flow = np.zeros(shape=(shape_of_vol[0], shape_of_vol[1], 2), dtype=np.float32)
-        for i in range(ks2 + 1, kernel.size):
-            flow = get_flow(vol[:, :, (x + i - ks2) % vol.shape[2]], vol[:, :, x], l, w, prev_flow)
-            prev_flow = flow
-            if __debug__:
-                min_OF_iter = np.min(flow)
-                if min_OF_iter < min_OF:
-                    min_OF = min_OF_iter
-                max_OF_iter = np.max(flow)
-                if max_OF < max_OF_iter:
-                    max_OF = max_OF_iter
-            OF_compensated_slice = warp_slice(vol[:, :, (x + i - ks2) % vol.shape[2]], flow)
-            tmp_slice += OF_compensated_slice * kernel[i]
-        filtered_vol[:, :, x] = tmp_slice
-        __percent__ = int(100*(x/X_dim))
-    if __debug__:
-        time_1 = time.perf_counter()
-        logging.debug(f"Filtering along X spent {time_1 - time_0} seconds")
-    return filtered_vol
-
-def no_OF_filter_along_X(vol, kernel, mean):
-    ks2 = kernel.size//2
-    global __percent__
-    logging.info(f"Filtering along X with l={l}, w={w}, and kernel length={kernel.size}")
-    if __debug__:
-        time_0 = time.perf_counter()
-    filtered_vol = np.zeros_like(vol).astype(np.float32)
-    shape_of_vol = np.shape(vol)
-    X_dim = vol.shape[2]
-    for x in range(X_dim):
-        tmp_slice = np.zeros_like(vol[:, :, x]).astype(np.float32)
+    def filter_along_X_slice(self, x, kernel):
+        ks2 = kernel.size//2
+        tmp_slice = np.zeros(shape=(self.vol.shape[0], self.vol.shape[1]), dtype=np.float32)
         for i in range(kernel.size):
-            tmp_slice += vol[:, :, (x + i - ks2) % vol.shape[2]] * kernel[i]
-        filtered_vol[:, :, x] = tmp_slice
-        #logging.info(f"Filtering along X {int(100*(x/X_dim))}%")
-        __percent__ = int(100*(x/X_dim))
-    if __debug__:
-        time_1 = time.perf_counter()
-        logging.debug(f"Filtering along X spent {time_1 - time_0} seconds")
-    return filtered_vol
+            tmp_slice += self.vol[:, :, (x + i - ks2) % self.vol.shape[2]]*kernel[i]
+        self.filtered_vol[:, :, x] = tmp_slice
+        if __debug__:
+            #self.progress.value += 1
+            progress.value += 1
 
-def OF_filter(vol, kernel, l, w):
-    mean = vol.mean()
-    filtered_vol_Z = OF_filter_along_Z(vol, kernel[0], l, w, mean)
-    filtered_vol_ZY = OF_filter_along_Y(filtered_vol_Z, kernel[1], l, w, mean)
-    filtered_vol_ZYX = OF_filter_along_X(filtered_vol_ZY, kernel[2], l, w, mean)
-    return filtered_vol_ZYX
+    def filter_along_Z_chunk(self, chunk_index, chunk_size, chunk_offset, kernel):
+        for z in range(chunk_size):
+            self.filter_along_Z_slice(chunk_index*chunk_size + z + chunk_offset, kernel)
+        return chunk_index # Probar a quitar este return
+        #print("5", np.max(self.filtered_vol), self.filtered_vol.data)
 
-def no_OF_filter(vol, kernel):
-    mean = vol.mean()
-    filtered_vol_Z = no_OF_filter_along_Z(vol, kernel[0], mean)
-    filtered_vol_ZY = no_OF_filter_along_Y(filtered_vol_Z, kernel[1], mean)
-    filtered_vol_ZYX = no_OF_filter_along_X(filtered_vol_ZY, kernel[2], mean)
-    return filtered_vol_ZYX
+    def filter_along_Y_chunk(self, chunk_index, chunk_size, chunk_offset, kernel):
+        for y in range(chunk_size):
+            self.filter_along_Y_slice(chunk_index*chunk_size + y + chunk_offset, kernel)
+        return chunk_index
+
+    def filter_along_X_chunk(self, chunk_index, chunk_size, chunk_offset, kernel):
+        for x in range(chunk_size):
+            self.filter_along_X_slice(chunk_index*chunk_size + x + chunk_offset, kernel)
+        return chunk_index
+
+    def filter_along_Z(self):
+        kernel = self.kernels[0]
+        logging.info(f"Filtering along Z")
+        if __debug__:
+            time_0 = time.perf_counter()
+            min_OF = 1000
+            max_OF = -1000
+        Z_dim = self.vol.shape[0]
+        chunk_size = Z_dim//self.number_of_processes
+        #chunk_indexes = [i for i in range(self.number_of_processes)]
+        #chunk_sizes = [chunk_size]*self.number_of_processes
+        #chunk_offsets = [0]*self.number_of_processes
+        #kernels = [kernel]*self.number_of_processes
+        #with PoolExecutor(max_workers=self.number_of_processes) as executor:
+        #    #print("4", np.max(self.filtered_vol), self.filtered_vol.data)
+        #    for _ in executor.map(self.filter_along_Z_chunk,
+        #                          chunk_indexes,
+        #                          chunk_sizes,
+        #                          chunk_offsets,
+        #                          kernels):
+        #        logging.debug(f"PU #{_} finished")
+        #        #print("4", np.max(self.filtered_vol), self.filtered_vol.data)
+        processes = []
+        for i in range(self.number_of_processes):
+            process = Task(
+                target=self.filter_along_Z_chunk,
+                args=(i, chunk_size, 0, kernel))
+            process.start()
+            processes.append(process)
+        for i in processes:
+            i.join()
+                
+        N_remaining_slices = Z_dim % self.number_of_processes
+        if N_remaining_slices > 0:
+            logging.info(f"remaining_slices={N_remaining_slices}")
+            #chunk_indexes = [i for i in range(N_remaining_slices)]
+            #chunk_sizes = [1]*N_remaining_slices
+            #chunk_offsets = [chunk_size*self.number_of_processes]*N_remaining_slices
+            #kernels = [kernel]*N_remaining_slices
+            #with PoolExecutor(max_workers=N_remaining_slices) as executor:
+            #    for _ in executor.map(self.filter_along_Z_chunk,
+            #                          chunk_indexes,
+            #                          chunk_sizes,
+            #                          chunk_offsets,
+            #                          kernels):
+            #        logging.debug(f"PU #{_} finished")
+            processes = []
+            for i in range(N_remaining_slices):
+                process = Task(
+                    target=self.filter_along_Z_chunk,
+                    args=(i, 1, chunk_size*self.number_of_processes, kernel))
+                process.start()
+                processes.append(process)
+            for i in processes:
+                i.join()
+
+        if __debug__:
+            time_1 = time.perf_counter()
+            diff = time_1 - time_0
+            logging.debug(f"Filtering along Z spent {diff} seconds")
+            logging.debug(f"Min OF val: {min_OF}")
+            logging.debug(f"Max OF val: {max_OF}")
+            convolution_time.value += diff
+
+    def filter_along_Y(self):
+        kernel = self.kernels[1]
+        logging.info(f"Filtering along Y")
+        if __debug__:
+            time_0 = time.perf_counter()
+            min_OF = 1000
+            max_OF = -1000
+        
+        Y_dim = self.vol.shape[1]
+        chunk_size = Y_dim//self.number_of_processes
+        #chunk_indexes = [i for i in range(self.number_of_processes)]
+        #chunk_sizes = [chunk_size]*self.number_of_processes
+        #chunk_offsets = [0]*self.number_of_processes
+        #kernels = [kernel]*self.number_of_processes
+        #with PoolExecutor(max_workers=self.number_of_processes) as executor:
+        #    for _ in executor.map(self.filter_along_Y_chunk,
+        #                          chunk_indexes,
+        #                          chunk_sizes,
+        #                          chunk_offsets,
+        #                          kernels):
+        #        logging.debug(f"PU #{_} finished")
+        processes = []
+        for i in range(self.number_of_processes):
+            process = Task(
+                target=self.filter_along_Y_chunk,
+                args=(i, chunk_size, 0, kernel))
+            process.start()
+            processes.append(process)
+        for i in processes:
+            i.join()
+
+        N_remaining_slices = Y_dim % self.number_of_processes
+        if N_remaining_slices > 0:
+            logging.info(f"remaining_slices={N_remaining_slices}")
+            #chunk_indexes = [i for i in range(N_remaining_slices)]
+            #chunk_sizes = [1]*N_remaining_slices
+            #chunk_offsets = [chunk_size*self.number_of_processes]*N_remaining_slices
+            #kernels = [kernel]*N_remaining_slices
+            #with PoolExecutor(max_workers=N_remaining_slices) as executor:
+            #    for _ in executor.map(self.filter_along_Y_chunk,
+            #                          chunk_indexes,
+            #                          chunk_sizes,
+            #                          chunk_offsets,
+            #                          kernels):
+            #        logging.debug(f"PU #{_} finished")
+            processes = []
+            for i in range(N_remaining_slices):
+                process = Task(
+                    target=self.filter_along_Y_chunk,
+                    args=(i, 1, chunk_size*self.number_of_processes, kernel))
+                process.start()
+                processes.append(process)
+            for i in processes:
+                i.join()
+
+        if __debug__:
+            time_1 = time.perf_counter()
+            diff = time_1 - time_0
+            logging.debug(f"Filtering along Y spent {diff} seconds")
+            logging.debug(f"Min OF val: {min_OF}")
+            logging.debug(f"Max OF val: {max_OF}")
+            convolution_time.value += diff
+
+    def filter_along_X(self):
+        kernel = self.kernels[2]
+        logging.info(f"Filtering along X")
+        if __debug__:
+            time_0 = time.perf_counter()
+            min_OF = 1000
+            max_OF = -1000
+        
+        X_dim = vol.shape[2]
+        chunk_size = X_dim//self.number_of_processes
+        #chunk_indexes = [i for i in range(self.number_of_processes)]
+        #chunk_sizes = [chunk_size]*self.number_of_processes
+        #chunk_offsets = [0]*self.number_of_processes
+        #kernels = [kernel]*self.number_of_processes
+        #with PoolExecutor(max_workers=self.number_of_processes) as executor:
+        #    for _ in executor.map(self.filter_along_X_chunk,
+        #                          chunk_indexes,
+        #                          chunk_sizes,
+        #                          chunk_offsets,
+        #                          kernels):
+        #        logging.debug(f"PU #{_} finished")
+        processes = []
+        for i in range(self.number_of_processes):
+            process = Task(
+                target=self.filter_along_X_chunk,
+                args=(i, chunk_size, 0, kernel))
+            process.start()
+            processes.append(process)
+        for i in processes:
+            i.join()        
+        N_remaining_slices = X_dim % self.number_of_processes
+        if N_remaining_slices > 0:
+            logging.info(f"remaining_slices={N_remaining_slices}")
+            #chunk_indexes = [i for i in range(N_remaining_slices)]
+            #chunk_sizes = [1]*N_remaining_slices
+            #chunk_offsets = [chunk_size*self.number_of_processes]*N_remaining_slices
+            #kernels = [kernel]*N_remaining_slices
+            #with PoolExecutor(max_workers=N_remaining_slices) as executor:
+            #    for _ in executor.map(self.filter_along_X_chunk,
+            #                          chunk_indexes,
+            #                          chunk_sizes,
+            #                          chunk_offsets,
+            #                          kernels):
+            #        logging.debug(f"PU #{_} finished")
+            processes = []
+            for i in range(N_remaining_slices):
+                process = Task(
+                    target=self.filter_along_X_chunk,
+                    args=(i, 1, chunk_size*self.number_of_processes, kernel))
+                process.start()
+                processes.append(process)
+            for i in processes:
+                i.join()
+
+        if __debug__:
+            time_1 = time.perf_counter()
+            diff = time_1 - time_0
+            logging.debug(f"Filtering along X spent {diff} seconds")
+            logging.debug(f"Min OF val: {min_OF}")
+            logging.debug(f"Max OF val: {max_OF}")
+            convolution_time.value += diff
+        
+    def filter(self, vol):
+        vol_size = vol.dtype.itemsize*vol.size
+        #self.vol = vol # This only can done if we were using threads
+        self.SM_vol = SharedMemory(
+            create=True,
+            size=vol_size,
+            name="vol") # See /dev/shm/vol
+        self.vol = np.ndarray(
+            shape=vol.shape,
+            dtype=vol.dtype,
+            buffer=self.SM_vol.buf)
+        self.vol = vol.copy()
+        #if __debug__:
+        #    logging.info(f"shape of the input volume (Z, Y, X) = {self.vol.shape}")
+        #    logging.info(f"type of the volume = {self.vol.dtype}")
+        #    logging.info(f"vol requires {vol_size/(1024*1024):.1f} MB")
+        #    logging.info(f"{args.input} max = {self.vol.max()}")
+        #    logging.info(f"{args.input} min = {self.vol.min()}")
+        #    vol_mean = vol.mean()
+        #    logging.info(f"Input vol average = {vol_mean}")
+        #self.filtered_vol = np.zeros_like(vol) # This only can done if we were using threads
+        self.SM_filtered_vol = SharedMemory(
+            create=True,
+            size=vol_size,
+            name="filtered_vol") # See /dev/shm/filtered_vol
+        self.filtered_vol = np.ndarray(
+            shape=vol.shape,
+            dtype=vol.dtype,
+            buffer=self.SM_filtered_vol.buf)
+        self.filtered_vol.fill(0)
+        #print("1", np.max(self.filtered_vol), self.filtered_vol.data)
+        self.filter_along_Z()
+        #print("2", np.max(self.filtered_vol), self.filtered_vol.data)
+        self.vol[...] = self.filtered_vol[...]
+        self.filter_along_Y()
+        self.vol[...] = self.filtered_vol[...]
+        self.filter_along_X()
+        return self.filtered_vol
+        #return self.vol
+
+    def close(self):
+        self.SM_vol.close()
+        self.SM_vol.unlink()
+        self.SM_filtered_vol.close()
+        self.SM_filtered_vol.unlink()
+
+    def feedback(self):
+        global done
+        while not done:
+            #logging.info(f"{100*self.progress.value/np.sum(vol.shape):3.2f} % filtering completed")
+            logging.info(f"{100*progress.value/np.sum(vol.shape):3.2f} % filtering completed")
+            time.sleep(1)
+
+class FlowDenoising(GaussianDenoising):
+
+    def __init__(self, number_of_processes, kernels, l, w, flower, warp_slice):
+        super().__init__(number_of_processes, kernels)
+        self.l = l
+        self.w = w
+        self.flower = flower
+        self.warp_slice = warp_slice
+
+    def filter_along_Z_slice(self, z, kernel):
+        ks2 = kernel.size//2
+        tmp_slice = np.zeros_like(self.vol[z, :, :]).astype(np.float32)
+        prev_flow = np.zeros(shape=(self.vol.shape[1], self.vol.shape[2], 2), dtype=np.float32)
+        self.flower.set_target(self.vol[z, :, :])
+        for i in range(ks2 - 1, -1, -1):
+            # If the parameter "flags==0" in
+            # cv2.cuda.FarnebackOpticalFlow.calc(), the parameter
+            # "prev_flow" in flower.get_flow() is ignored, and
+            # therefore the OF is computed from zero.
+            flow = self.flower.get_flow(self.vol[(z + i - ks2) % self.vol.shape[0], :, :], prev_flow)
+            prev_flow = flow
+            OF_compensated_slice = self.warp_slice(self.vol[(z + i - ks2) % self.vol.shape[0], :, :], flow)
+            tmp_slice += OF_compensated_slice*kernel[i]
+        tmp_slice += self.vol[z, :, :]*kernel[ks2]
+        prev_flow = np.zeros(shape=(self.vol.shape[1], self.vol.shape[2], 2), dtype=np.float32)
+        for i in range(ks2 + 1, kernel.size):
+            flow = self.flower.get_flow(self.vol[(z + i - ks2) % self.vol.shape[0], :, :], prev_flow)
+            prev_flow = flow
+            OF_compensated_slice = self.warp_slice(self.vol[(z + i - ks2) % self.vol.shape[0], :, :], flow)
+            tmp_slice += OF_compensated_slice*kernel[i]
+        self.filtered_vol[z, :, :] = tmp_slice
+        if __debug__:
+            #self.progress.value += 1
+            progress.value += 1
+
+    def filter_along_Y_slice(self, y, kernel):
+        ks2 = kernel.size//2
+        tmp_slice = np.zeros_like(self.vol[:, y, :]).astype(np.float32)
+        #assert kernel.size % 2 != 0 # kernel.size must be odd
+        prev_flow = np.zeros(shape=(self.vol.shape[0], self.vol.shape[2], 2), dtype=np.float32)
+        self.flower.set_target(self.vol[:, y, :])
+        for i in range(ks2 - 1, -1, -1):
+            flow = self.flower.get_flow(self.vol[:, (y + i - ks2) % self.vol.shape[1], :], prev_flow)
+            prev_flow = flow
+            OF_compensated_slice = self.warp_slice(self.vol[:, (y + i - ks2) % self.vol.shape[1], :], flow)
+            tmp_slice += OF_compensated_slice*kernel[i]
+        tmp_slice += self.vol[:, y, :]*kernel[ks2]
+        prev_flow = np.zeros(shape=(self.vol.shape[0], self.vol.shape[2], 2), dtype=np.float32)
+        for i in range(ks2 + 1, kernel.size):
+            flow = self.flower.get_flow(self.vol[:, (y + i - ks2) % self.vol.shape[1], :], prev_flow)
+            prev_flow = flow
+            OF_compensated_slice = self.warp_slice(self.vol[:, (y + i - ks2) % self.vol.shape[1], :], flow)
+            tmp_slice += OF_compensated_slice*kernel[i]
+        self.filtered_vol[:, y, :] = tmp_slice
+        if __debug__:
+            #self.progress.value += 1
+            progress.value += 1
+
+    def filter_along_X_slice(self, x, kernel):
+        ks2 = kernel.size//2
+        tmp_slice = np.zeros_like(self.vol[:, :, x]).astype(np.float32)
+        #assert kernel.size % 2 != 0 # kernel.size must be odd
+        prev_flow = np.zeros(shape=(self.vol.shape[0], self.vol.shape[1], 2), dtype=np.float32)
+        self.flower.set_target(self.vol[:, :, x])
+        for i in range(ks2 - 1, -1, -1):
+            flow = self.flower.get_flow(self.vol[:, :, (x + i - ks2) % self.vol.shape[2]], prev_flow)
+            prev_flow = flow
+            OF_compensated_slice = self.warp_slice(self.vol[:, :, (x + i - ks2) % self.vol.shape[2]], flow)
+            tmp_slice += OF_compensated_slice*kernel[i]
+        tmp_slice += self.vol[:, :, x]*kernel[ks2]
+        prev_flow = np.zeros(shape=(self.vol.shape[0], self.vol.shape[1], 2), dtype=np.float32)
+        for i in range(ks2 + 1, kernel.size):
+            flow = self.flower.get_flow(self.vol[:, :, (x + i - ks2) % self.vol.shape[2]], prev_flow)
+            prev_flow = flow
+            OF_compensated_slice = self.warp_slice(self.vol[:, :, (x + i - ks2) % self.vol.shape[2]], flow)
+            tmp_slice += OF_compensated_slice * kernel[i]
+        self.filtered_vol[:, :, x] = tmp_slice
+        if __debug__:
+            #self.progress.value += 1
+            progress.value += 1
 
 def int_or_str(text):
     '''Helper function for argument parsing.'''
@@ -320,11 +561,7 @@ def int_or_str(text):
     except ValueError:
         return text
 
-def feedback():
-    global __percent__
-    while True:
-        logging.info(f"{__percent__} %")
-        time.sleep(1)
+number_of_PUs = multiprocessing.cpu_count()
 
 parser = argparse.ArgumentParser(
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -349,13 +586,33 @@ parser.add_argument("-w", "--winsize", type=int_or_str,
 parser.add_argument("-v", "--verbosity", type=int_or_str,
                     help="Verbosity level", default=0)
 parser.add_argument("-n", "--no_OF", action="store_true", help="Disable optical flow compensation")
-parser.add_argument("-m", "--memory_map", action="store_true", help="Enable memory-mapping (see https://mrcfile.readthedocs.io/en/stable/usage_guide.html#dealing-with-large-files, only for MRC files)")
+parser.add_argument("-m", "--memory_map",
+                    action="store_true",
+                    help="Enable memory-mapping (see https://mrcfile.readthedocs.io/en/stable/usage_guide.html#dealing-with-large-files, only for MRC files)")
+parser.add_argument("-p", "--number_of_processes", type=int_or_str,
+                    help="Maximum number of processes",
+                    default=number_of_PUs)
+parser.add_argument("--recompute_flow", action="store_true", help="Disable the use of adjacent optical flow fields")
+parser.add_argument("--show_fingerprint", action="store_true", help="Show a hash of this file (you must run it in the folder that contains flowdenoising.py)")
+parser.add_argument("--use_GPU", action="store_true", help="Compute the optical flow in the GPU (if available through CUDA)")
+parser.add_argument("--use_threads", action="store_true", help="Use threads instead of processes")
 
-if __name__ == "__main__":
+def show_memory_usage(msg=''):
+    logging.info(f"{psutil.Process(os.getpid()).memory_info().rss/(1024*1024):.1f} MB used in process {os.getpid()} {msg}")
 
+if __name__ == "__main__":    
     parser.description = __doc__
-    args = parser.parse_args()
+    print ("Python version =", sys.version)
     
+    args = parser.parse_args()
+    if args.show_fingerprint:
+        hash_algorithm = hashlib.new(name="sha256")
+        with open("flowdenoising.py", "rb") as file:
+            while chunk := file.read(512):
+                hash_algorithm.update(chunk)
+        fingerprint = hash_algorithm.hexdigest()
+        print("fingerprint =", fingerprint)
+
     if args.verbosity == 2:
         logging.basicConfig(format=LOGGING_FORMAT, level=logging.DEBUG)
         logging.info("Verbosity level = 2")
@@ -365,16 +622,37 @@ if __name__ == "__main__":
     else:
         logging.basicConfig(format=LOGGING_FORMAT, level=logging.CRITICAL)
 
-    logging.info(cv2.cuda.printShortCudaDeviceInfo(device=0))
+    if args.use_threads:
+        from threading import Thread as Task
+        logging.info("Using threads")
+    else:
+        from multiprocessing import Process as Task
+        logging.info("Using processes")
 
-    thread = threading.Thread(target=feedback)
-    thread.daemon = True # To obey CTRL+C interruption.
-    thread.start()
-        
+    l = args.levels
+    logging.info(f"l={l}")
+    w = args.winsize
+    logging.info(f"w={w}")
+
+    if args.recompute_flow:
+        if args.use_GPU:
+            flower = GPU_flower(l=l, w=w, iters=OF_ITERS, polyN=OF_POLY_N, polySigma=OF_POLY_SIGMA, flags=0)
+            logging.info("Computing the optical flow in the GPU")
+        else:
+            flower = CPU_flower(l=l, w=w, iters=OF_ITERS, polyN=OF_POLY_N, polySigma=OF_POLY_SIGMA, flags=0)
+            logging.info("Computing the optical flow in the CPU")
+        logging.info("Not using adjacent OF fields as predictions")
+    else:
+        if args.use_GPU:
+            flower = GPU_flower(l=l, w=w, iters=OF_ITERS, polyN=OF_POLY_N, polySigma=OF_POLY_SIGMA, flags=cv2.OPTFLOW_USE_INITIAL_FLOW)
+            logging.info("Computing the optical flow in the GPU")
+        else:
+            flower = CPU_flower(l=l, w=w, iters=OF_ITERS, polyN=OF_POLY_N, polySigma=OF_POLY_SIGMA, flags=cv2.OPTFLOW_USE_INITIAL_FLOW)
+            logging.info("Computing the optical flow in the CPU")
+        logging.info("Using adjacent OF fields as predictions (the \"l\" parameter can be smaller)")
+
     sigma = [float(i) for i in args.sigma]
     logging.info(f"sigma={tuple(sigma)}")
-    l = args.levels
-    w = args.winsize
     
     #logging.debug(f"Using transpose pattern {args.transpose} {type(args.transpose)}")
     #transpose_pattern = tuple([int(i) for i in args.transpose])
@@ -383,81 +661,110 @@ if __name__ == "__main__":
     if __debug__:
         logging.info(f"reading \"{args.input}\"")
         time_0 = time.perf_counter()
+        logging.debug(f"input = {args.input}")
 
     logging.debug(f"input = {args.input}")
 
-    MRC_input = ( args.input.split('.')[-1] == "MRC" or args.input.split('.')[-1] == "mrc" )
+    MRC_input = "mrc" in args.input.split('.')[-1].lower()
     if MRC_input:
-        if args.memory_map:
-            logging.info(f"Using memory mapping")
-            vol_MRC = rc = mrcfile.mmap(args.input, mode='r+')
-        else:
-            vol_MRC = mrcfile.open(args.input, mode="r+")
-        vol = vol_MRC.data
+        #if args.memory_map:
+        #    logging.info(f"Using memory mapping")
+        #    vol_MRC = rc = mrcfile.mmap(args.input, mode='r+')
+        #else:
+        with mrcfile.open(args.input, mode="r+") as vol_MRC:
+            vol = vol_MRC.data
     else:
         vol = skimage.io.imread(args.input, plugin="tifffile").astype(np.float32)
+    vol_size = vol.dtype.itemsize * vol.size
 
     logging.info(f"shape of the input volume (Z, Y, X) = {vol.shape}")
     logging.info(f"type of the volume = {vol.dtype}")
-
-    #vol = np.transpose(vol, transpose_pattern)
-    #logging.info(f"shape of the volume to denoise (Z, Y, X) = {vol.shape}")
+    logging.info(f"vol requires {vol_size/(1024*1024):.1f} MB")
+    logging.info(f"{args.input} max = {vol.max()}")
+    logging.info(f"{args.input} min = {vol.min()}")
+    if __debug__:
+        vol_mean = vol.mean()
+        logging.info(f"Input vol average = {vol_mean}")
 
     if __debug__:
         time_1 = time.perf_counter()
         logging.info(f"read \"{args.input}\" in {time_1 - time_0} seconds")
 
-    logging.info(f"{args.input} type = {vol.dtype}")
-    logging.info(f"{args.input} max = {vol.max()}")
-    logging.info(f"{args.input} min = {vol.min()}")
-    logging.info(f"Input vol average = {vol.mean()}")
+    kernels = [None]*3
+    kernels[0] = get_gaussian_kernel(sigma[0])
+    kernels[1] = get_gaussian_kernel(sigma[1])
+    kernels[2] = get_gaussian_kernel(sigma[2])
+    logging.info(f"length of each filter (Z, Y, X) = {[len(i) for i in [*kernels]]}")
+    assert kernels[0].size % 2 != 0 # kernel.size must be odd
+    assert kernels[1].size % 2 != 0 # kernel.size must be odd
+    assert kernels[2].size % 2 != 0 # kernel.size must be odd
 
-    kernel = [None]*3
-    kernel[0] = get_gaussian_kernel(sigma[0])
-    kernel[1] = get_gaussian_kernel(sigma[1])
-    kernel[2] = get_gaussian_kernel(sigma[2])
-    logging.info(f"length of each filter (Z, Y, X) = {[len(i) for i in [*kernel]]}")
-    
+    #vol = np.transpose(vol, transpose_pattern)
+    #logging.info(f"After transposing, shape of the volume to denoise (Z, Y, X) = {vol.shape}")
+
+    number_of_processes = args.number_of_processes
+    logging.info(f"Number of available processing units: {number_of_PUs}")
+    logging.info(f"Number of concurrent processes: {number_of_processes}")
+
+    logging.info(f"Filtering ...")
     if __debug__:
-        logging.info(f"Filtering ...")
-        #time_0 = time.perf_counter()
         time_0 = time.perf_counter()
 
     if args.no_OF:
-        filtered_vol = no_OF_filter(vol, kernel)
+        fd = GaussianDenoising(number_of_processes, kernels)
     else:
-        filtered_vol = OF_filter(vol, kernel, l, w)
+        fd = FlowDenoising(number_of_processes, kernels, l, w, flower, warp_slice) # Ojo, posiblemente sobren los parámetros l y w
 
     if __debug__:
-        #time_1 = time.perf_counter()        
+        thread = threading.Thread(target=fd.feedback)
+        thread.daemon = True # To obey CTRL+C interruption.
+        thread.start()
+
+    filtered_vol = fd.filter(vol)
+
+    #logging.info(f"{args.input} type = {vol.dtype}")
+    #logging.info(f"{args.input} max = {vol.max()}")
+    #logging.info(f"{args.input} min = {vol.min()}")
+    #logging.info(f"{args.input} average = {vol.mean()}")
+    if __debug__:
         time_1 = time.perf_counter()        
         logging.info(f"Volume filtered in {time_1 - time_0} seconds")
 
-    #filtered_vol = np.transpose(filtered_vol, transpose_pattern)
-    logging.info(f"shape of the denoised volume (Z, Y, X) = {filtered_vol.shape}")
+    #print(type(filtered_vol), filtered_vol.shape, filtered_vol.dtype)
+    #quit()
+    #print(np.max(filtered_vol))
 
+    #filtered_vol = np.transpose(filtered_vol, transpose_pattern)
     logging.info(f"{args.output} type = {filtered_vol.dtype}")
     logging.info(f"{args.output} max = {filtered_vol.max()}")
     logging.info(f"{args.output} min = {filtered_vol.min()}")
-    logging.info(f"Output vol average = {filtered_vol.mean()}")
+    logging.info(f"{args.output} average = {filtered_vol.mean()}")
     
     if __debug__:
-        logging.info(f"writting \"{args.output}\"")
+        logging.info(f"writing \"{args.output}\"")
         time_0 = time.perf_counter()
+        logging.debug(f"output = {args.output}")
 
-    logging.debug(f"output = {args.output}")
-        
+    #MRC_output = "mrc" in args.output.split('.')[-1].lower()
     MRC_output = ( args.output.split('.')[-1] == "MRC" or args.output.split('.')[-1] == "mrc" )
 
     if MRC_output:
-        logging.debug(f"Writting MRC file")
+        logging.debug(f"Writing MRC file")
         with mrcfile.new(args.output, overwrite=True) as mrc:
             mrc.set_data(filtered_vol.astype(np.float32))
             mrc.data
     else:
         logging.debug(f"Writting TIFF file")
         skimage.io.imsave(args.output, filtered_vol.astype(np.float32), plugin="tifffile")
-
+    
     if __debug__:
         time_1 = time.perf_counter()        
         logging.info(f"written \"{args.output}\" in {time_1 - time_0} seconds")
+        logging.info(f"OFE_time = {OFE_time.value/number_of_processes} seconds")
+        logging.info(f"warping_time = {warping_time.value/number_of_processes} seconds")
+        logging.info(f"convolution_time = {convolution_time.value/number_of_processes} seconds")
+        logging.info(f"transference_time = {transference_time.value} seconds")
+
+    fd.close()
+    done = True
+    print("done")
